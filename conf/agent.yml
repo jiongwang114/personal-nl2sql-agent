@@ -1,0 +1,19 @@
+agent:
+  home: ~/.dataengineer
+  target: deepseek
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY}
+    deepseek:
+      api_key: ${DEEPSEEK_API_KEY}
+  services:
+    datasources:
+      demo:
+        type: duckdb
+        uri: duckdb:///sample_data/duckdb-demo.duckdb
+  workflow:
+    plan: planA
+    planA:
+      - schema_linking
+      - generate_sql
+      - output

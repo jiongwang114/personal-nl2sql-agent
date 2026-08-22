@@ -1,0 +1,568 @@
+[
+  {
+    "question_id": 1,
+    "question": "Which country has the highest number of transactions? (Using transactions aggregated by country.)",
+    "gold_sql": "SELECT\r\nc.country,\r\nSUM(1) as transactions\r\nFROM mf_demo.mf_demo_transactions t\r\nJOIN mf_demo.mf_demo_customers cust ON t.id_customer = cust.id_customer\r\nJOIN mf_demo.mf_demo_countries c ON cust.country = c.country\r\nGROUP BY c.country, c.region\r\nORDER BY transactions DESC limit 1;",
+    "gold_tables": [
+      "mf_demo.mf_demo_countries",
+      "mf_demo.mf_demo_customers",
+      "mf_demo.mf_demo_transactions"
+    ],
+    "gold_result": {
+      "columns": [
+        "country",
+        "transactions"
+      ],
+      "rows": [
+        [
+          "CA",
+          15
+        ]
+      ],
+      "row_count": 1
+    }
+  },
+  {
+    "question_id": 2,
+    "question": "What is the total transaction amount (USD) by region (NA, EU, SA)? (Use the mf_demo_countries table to map country to region and aggregate transaction amounts accordingly.)",
+    "gold_sql": "SELECT\r\nc.region,\r\nSUM(t.transaction_amount_usd) as total_transaction_amount_usd,\r\nCOUNT(t.id_transaction) as transaction_count\r\nFROM mf_demo.mf_demo_transactions t\r\nJOIN mf_demo.mf_demo_customers cust ON t.id_customer = cust.id_customer\r\nJOIN mf_demo.mf_demo_countries c ON cust.country = c.country\r\nGROUP BY c.region\r\nORDER BY total_transaction_amount_usd DESC;",
+    "gold_tables": [
+      "mf_demo.mf_demo_countries",
+      "mf_demo.mf_demo_customers",
+      "mf_demo.mf_demo_transactions"
+    ],
+    "gold_result": {
+      "columns": [
+        "region",
+        "total_transaction_amount_usd",
+        "transaction_count"
+      ],
+      "rows": [
+        [
+          "NA",
+          8266.039999999997,
+          39
+        ],
+        [
+          "EU",
+          3450.3999999999996,
+          11
+        ]
+      ],
+      "row_count": 2
+    }
+  },
+  {
+    "question_id": 3,
+    "question": "What is the 7-day rolling sum of transaction amount (USD) for the region 'NA', and how does it compare with the same period for \"EU\"? (Use the transaction_usd_na_l7d metric concept, extending it to create a similar one for EU.) (What is the 7-day rolling sum of transaction amount (USD) for the region NorthAmerican, and how does it compare with the same period for Europe?)",
+    "gold_sql": "WITH daily_amounts AS (\r\n    SELECT \r\n        DATE(t.ds) as transaction_date,\r\n        c.region,\r\n        SUM(t.transaction_amount_usd) as daily_amount\r\n    FROM mf_demo.mf_demo_transactions t\r\n    JOIN mf_demo.mf_demo_customers cust ON t.id_customer = cust.id_customer\r\n    JOIN mf_demo.mf_demo_countries c ON cust.country = c.country\r\n    WHERE c.region IN ('NA', 'EU')\r\n    GROUP BY DATE(t.ds), c.region\r\n),\r\nrolling_sums AS (\r\n    SELECT \r\n        transaction_date,\r\n        region,\r\n        daily_amount,\r\n        SUM(daily_amount) OVER (\r\n            PARTITION BY region \r\n            ORDER BY transaction_date \r\n            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW\r\n        ) as rolling_7day_sum\r\n    FROM daily_amounts\r\n)\r\nSELECT \r\n    transaction_date,\r\n    MAX(CASE WHEN region = 'NA' THEN rolling_7day_sum END) as na_7day_rolling_sum,\r\n    MAX(CASE WHEN region = 'EU' THEN rolling_7day_sum END) as eu_7day_rolling_sum\r\nFROM rolling_sums\r\nGROUP BY transaction_date\r\nORDER BY transaction_date;",
+    "gold_tables": [
+      "mf_demo.mf_demo_countries",
+      "mf_demo.mf_demo_customers",
+      "mf_demo.mf_demo_transactions"
+    ],
+    "gold_result": {
+      "columns": [
+        "transaction_date",
+        "na_7day_rolling_sum",
+        "eu_7day_rolling_sum"
+      ],
+      "rows": [
+        [
+          "2022-03-07",
+          295.03,
+          192.98
+        ],
+        [
+          "2022-03-08",
+          872.03,
+          null
+        ],
+        [
+          "2022-03-09",
+          879.6899999999999,
+          null
+        ],
+        [
+          "2022-03-10",
+          1051.12,
+          null
+        ],
+        [
+          "2022-03-11",
+          1259.4899999999998,
+          null
+        ],
+        [
+          "2022-03-12",
+          1390.2999999999997,
+          null
+        ],
+        [
+          "2022-03-13",
+          1477.7199999999998,
+          null
+        ],
+        [
+          "2022-03-14",
+          1362.03,
+          null
+        ],
+        [
+          "2022-03-15",
+          1051.78,
+          692.5699999999999
+        ],
+        [
+          "2022-03-16",
+          1317.28,
+          989.3
+        ],
+        [
+          "2022-03-17",
+          1606.68,
+          null
+        ],
+        [
+          "2022-03-18",
+          1624.17,
+          null
+        ],
+        [
+          "2022-03-21",
+          2133.23,
+          1248.02
+        ],
+        [
+          "2022-03-22",
+          2568.49,
+          1569.05
+        ],
+        [
+          "2022-03-23",
+          2604.2899999999995,
+          1609.87
+        ],
+        [
+          "2022-03-25",
+          2404.14,
+          2295.7
+        ],
+        [
+          "2022-03-26",
+          2310.8899999999994,
+          2471.37
+        ],
+        [
+          "2022-03-27",
+          2167.04,
+          null
+        ],
+        [
+          "2022-03-28",
+          2208.08,
+          null
+        ],
+        [
+          "2022-03-29",
+          null,
+          2757.83
+        ],
+        [
+          "2022-03-30",
+          2102.46,
+          null
+        ],
+        [
+          "2022-03-31",
+          2750.74,
+          null
+        ],
+        [
+          "2022-04-01",
+          2636.0,
+          null
+        ],
+        [
+          "2022-04-02",
+          3139.3900000000003,
+          null
+        ],
+        [
+          "2022-04-03",
+          3313.2900000000004,
+          null
+        ],
+        [
+          "2022-04-04",
+          3441.2,
+          null
+        ]
+      ],
+      "row_count": 26
+    }
+  },
+  {
+    "question_id": 4,
+    "question": "If a customer from 'MX' region has made a quick-buy transaction, what is the likelihood (probability) that they also had at least one cancellation? (Calculate the proportion of MX customers with at least one quick-buy who also have at least one cancellation.) (If a customer from maxigo region has made a quick-buy transaction, what is the likelihood (probability) that they also had at least one cancellation?)",
+    "gold_sql": "WITH mx_customers AS (\r\nSELECT DISTINCT t.id_customer\r\nFROM mf_demo.mf_demo_transactions t\r\nJOIN mf_demo.mf_demo_customers cust ON t.id_customer = cust.id_customer\r\nWHERE cust.country = 'MX'\r\n),\r\nquick_buy_customers AS (\r\nSELECT DISTINCT t.id_customer\r\nFROM mf_demo.mf_demo_transactions t\r\nJOIN mx_customers mx ON t.id_customer = mx.id_customer\r\nWHERE t.transaction_type_name = 'quick-buy'\r\n),\r\ncancellation_customers AS (\r\nSELECT DISTINCT t.id_customer\r\nFROM mf_demo.mf_demo_transactions t\r\nJOIN mx_customers mx ON t.id_customer = mx.id_customer\r\nWHERE t.transaction_type_name = 'cancellation'\r\n)\r\nSELECT\r\nCOUNT(qb.id_customer) as quick_buy_customers,\r\nCOUNT(CASE WHEN c.id_customer IS NOT NULL THEN 1 END) as quick_buy_with_cancellation,\r\n(COUNT(CASE WHEN c.id_customer IS NOT NULL THEN 1 END) * 1.0 / COUNT(qb.id_customer)) as probability\r\nFROM quick_buy_customers qb\r\nLEFT JOIN cancellation_customers c ON qb.id_customer = c.id_customer;",
+    "gold_tables": [
+      "mf_demo.mf_demo_customers",
+      "mf_demo.mf_demo_transactions"
+    ],
+    "gold_result": {
+      "columns": [
+        "quick_buy_customers",
+        "quick_buy_with_cancellation",
+        "probability"
+      ],
+      "rows": [
+        [
+          1,
+          1,
+          1.0
+        ]
+      ],
+      "row_count": 1
+    }
+  },
+  {
+    "question_id": 5,
+    "question": "For each region (NA, EU, SA), what is the cumulative 7-day quick-buy amount (USD) as of 2022-04-04?",
+    "gold_sql": "WITH quick_buy_by_region AS (\r\nSELECT\r\nDATE(t.ds) as transaction_date,\r\nc.region,\r\nSUM(CASE WHEN t.transaction_type_name = 'quick-buy' THEN t.transaction_amount_usd ELSE 0 END) as daily_quick_buy_amount\r\nFROM mf_demo.mf_demo_transactions t\r\nJOIN mf_demo.mf_demo_customers cust ON t.id_customer = cust.id_customer\r\nJOIN mf_demo.mf_demo_countries c ON cust.country = c.country\r\nWHERE DATE(t.ds) >= '2022-03-29' AND DATE(t.ds) <= '2022-04-04' -- 7 days window\r\nGROUP BY DATE(t.ds), c.region\r\n)\r\nSELECT\r\nregion,\r\nSUM(daily_quick_buy_amount) as cumulative_7day_quick_buy_amount_usd\r\nFROM quick_buy_by_region\r\nGROUP BY region\r\nORDER BY cumulative_7day_quick_buy_amount_usd DESC;",
+    "gold_tables": [
+      "mf_demo.mf_demo_countries",
+      "mf_demo.mf_demo_customers",
+      "mf_demo.mf_demo_transactions"
+    ],
+    "gold_result": {
+      "columns": [
+        "region",
+        "cumulative_7day_quick_buy_amount_usd"
+      ],
+      "rows": [
+        [
+          "NA",
+          675.35
+        ],
+        [
+          "EU",
+          438.43
+        ]
+      ],
+      "row_count": 2
+    }
+  },
+  {
+    "question_id": 6,
+    "question": "What is the daily cancellation rate trend in NA versus EU from 2022-03-07 to 2022-04-04? Plot or tabulate cancellation_rate by ds and region.",
+    "gold_sql": "SELECT\r\nDATE(t.ds) as transaction_date,\r\nc.region,\r\nSUM(CASE WHEN t.transaction_type_name = 'cancellation' THEN t.transaction_amount_usd ELSE 0 END) as cancellations_usd,\r\nSUM(t.transaction_amount_usd) as total_transaction_amount_usd,\r\n(SUM(CASE WHEN t.transaction_type_name = 'cancellation' THEN t.transaction_amount_usd ELSE 0 END) /\r\nNULLIF(SUM(t.transaction_amount_usd), 0)) * 100 as cancellation_rate_percent\r\nFROM mf_demo.mf_demo_transactions t\r\nJOIN mf_demo.mf_demo_customers cust ON t.id_customer = cust.id_customer\r\nJOIN mf_demo.mf_demo_countries c ON cust.country = c.country\r\nWHERE c.region IN ('NA', 'EU')\r\nAND DATE(t.ds) >= '2022-03-07'\r\nAND DATE(t.ds) <= '2022-04-04'\r\nGROUP BY DATE(t.ds), c.region\r\nORDER BY transaction_date, c.region;",
+    "gold_tables": [
+      "mf_demo.mf_demo_countries",
+      "mf_demo.mf_demo_customers",
+      "mf_demo.mf_demo_transactions"
+    ],
+    "gold_result": {
+      "columns": [
+        "transaction_date",
+        "region",
+        "cancellations_usd",
+        "total_transaction_amount_usd",
+        "cancellation_rate_percent"
+      ],
+      "rows": [
+        [
+          "2022-03-07",
+          "EU",
+          0.0,
+          192.98,
+          0.0
+        ],
+        [
+          "2022-03-07",
+          "NA",
+          0.0,
+          295.03,
+          0.0
+        ],
+        [
+          "2022-03-08",
+          "NA",
+          0.0,
+          577.0,
+          0.0
+        ],
+        [
+          "2022-03-09",
+          "NA",
+          0.0,
+          7.66,
+          0.0
+        ],
+        [
+          "2022-03-10",
+          "NA",
+          91.55,
+          171.43,
+          53.403721635653035
+        ],
+        [
+          "2022-03-11",
+          "NA",
+          208.37,
+          208.37,
+          100.0
+        ],
+        [
+          "2022-03-12",
+          "NA",
+          130.81,
+          130.81,
+          100.0
+        ],
+        [
+          "2022-03-13",
+          "NA",
+          0.0,
+          87.42,
+          0.0
+        ],
+        [
+          "2022-03-14",
+          "NA",
+          179.34,
+          179.34,
+          100.0
+        ],
+        [
+          "2022-03-15",
+          "EU",
+          0.0,
+          499.59,
+          0.0
+        ],
+        [
+          "2022-03-15",
+          "NA",
+          129.68,
+          266.75,
+          48.614807872539835
+        ],
+        [
+          "2022-03-16",
+          "EU",
+          296.73,
+          296.73,
+          100.0
+        ],
+        [
+          "2022-03-16",
+          "NA",
+          0.0,
+          273.16,
+          0.0
+        ],
+        [
+          "2022-03-17",
+          "NA",
+          0.0,
+          460.83,
+          0.0
+        ],
+        [
+          "2022-03-18",
+          "NA",
+          225.86,
+          225.86,
+          100.0
+        ],
+        [
+          "2022-03-21",
+          "EU",
+          0.0,
+          258.72,
+          0.0
+        ],
+        [
+          "2022-03-21",
+          "NA",
+          189.25,
+          639.87,
+          29.5763201900386
+        ],
+        [
+          "2022-03-22",
+          "EU",
+          0.0,
+          321.03,
+          0.0
+        ],
+        [
+          "2022-03-22",
+          "NA",
+          448.13,
+          522.68,
+          85.73697099563788
+        ],
+        [
+          "2022-03-23",
+          "EU",
+          40.82,
+          40.82,
+          100.0
+        ],
+        [
+          "2022-03-23",
+          "NA",
+          215.14,
+          215.14,
+          100.0
+        ],
+        [
+          "2022-03-25",
+          "EU",
+          0.0,
+          685.8299999999999,
+          0.0
+        ],
+        [
+          "2022-03-25",
+          "NA",
+          0.0,
+          66.6,
+          0.0
+        ],
+        [
+          "2022-03-26",
+          "EU",
+          0.0,
+          368.65,
+          0.0
+        ],
+        [
+          "2022-03-26",
+          "NA",
+          0.0,
+          179.91,
+          0.0
+        ],
+        [
+          "2022-03-27",
+          "NA",
+          0.0,
+          316.98,
+          0.0
+        ],
+        [
+          "2022-03-28",
+          "NA",
+          0.0,
+          266.9,
+          0.0
+        ],
+        [
+          "2022-03-29",
+          "EU",
+          347.62,
+          786.05,
+          44.22364989504485
+        ],
+        [
+          "2022-03-30",
+          "NA",
+          0.0,
+          534.25,
+          0.0
+        ],
+        [
+          "2022-03-31",
+          "NA",
+          482.02,
+          1170.96,
+          41.16451458632233
+        ],
+        [
+          "2022-04-01",
+          "NA",
+          100.4,
+          100.4,
+          100.0
+        ],
+        [
+          "2022-04-02",
+          "NA",
+          0.0,
+          569.99,
+          0.0
+        ],
+        [
+          "2022-04-03",
+          "NA",
+          0.0,
+          353.81,
+          0.0
+        ],
+        [
+          "2022-04-04",
+          "NA",
+          444.89,
+          444.89,
+          100.0
+        ]
+      ],
+      "row_count": 34
+    }
+  },
+  {
+    "question_id": 7,
+    "question": "Identify any days where the number of distinct transacting customers spiked more than two standard deviations above the March 2022 average. What were the corresponding total transaction amounts? Use transacting_customers as the metric and an anomaly-detection threshold.",
+    "gold_sql": "WITH daily_customers AS (\r\nSELECT\r\nDATE(ds) as transaction_date,\r\nCOUNT(DISTINCT id_customer) as transacting_customers,\r\nSUM(transaction_amount_usd) as total_transaction_amount\r\nFROM mf_demo.mf_demo_transactions\r\nGROUP BY DATE(ds)\r\n),\r\nmarch_stats AS (\r\nSELECT\r\nAVG(transacting_customers) as avg_customers,\r\nSTDDEV(transacting_customers) as stddev_customers\r\nFROM daily_customers\r\nWHERE transaction_date >= '2022-03-01' AND transaction_date < '2022-04-01'\r\n)\r\nSELECT\r\ndc.transaction_date,\r\ndc.transacting_customers,\r\ndc.total_transaction_amount,\r\nms.avg_customers,\r\nms.stddev_customers,\r\n(dc.transacting_customers - ms.avg_customers) / ms.stddev_customers as z_score\r\nFROM daily_customers dc\r\nCROSS JOIN march_stats ms\r\nWHERE (dc.transacting_customers - ms.avg_customers) > (2 * ms.stddev_customers)\r\nORDER BY dc.transaction_date;",
+    "gold_tables": [
+      "mf_demo.mf_demo_transactions"
+    ],
+    "gold_result": {
+      "columns": [
+        "transaction_date",
+        "transacting_customers",
+        "total_transaction_amount",
+        "avg_customers",
+        "stddev_customers",
+        "z_score"
+      ],
+      "rows": [],
+      "row_count": 0
+    }
+  },
+  {
+    "question_id": 8,
+    "question": "For MX customers, how did the 7-day rolling sum of transaction amount (USD) change before and after their first cancellation event? Combine transaction_usd_l7d_mx logic with customer-level windows keyed on the first cancellation date.",
+    "gold_sql": "WITH mx_customers AS (\r\nSELECT DISTINCT cust.id_customer\r\nFROM mf_demo.mf_demo_customers cust\r\nWHERE cust.country = 'MX'\r\n),\r\nfirst_cancellations AS (\r\nSELECT\r\nt.id_customer,\r\nMIN(DATE(t.ds)) as first_cancellation_date\r\nFROM mf_demo.mf_demo_transactions t\r\nJOIN mx_customers mx ON t.id_customer = mx.id_customer\r\nWHERE t.transaction_type_name = 'cancellation'\r\nGROUP BY t.id_customer\r\n),\r\nmx_daily_amounts AS (\r\nSELECT\r\nt.id_customer,\r\nDATE(t.ds) as transaction_date,\r\nSUM(t.transaction_amount_usd) as daily_amount\r\nFROM mf_demo.mf_demo_transactions t\r\nJOIN mx_customers mx ON t.id_customer = mx.id_customer\r\nGROUP BY t.id_customer, DATE(t.ds)\r\n),\r\nrolling_amounts AS (\r\nSELECT\r\nda.id_customer,\r\nda.transaction_date,\r\nda.daily_amount,\r\nfc.first_cancellation_date,\r\nSUM(da.daily_amount) OVER (\r\nPARTITION BY da.id_customer\r\nORDER BY da.transaction_date\r\nROWS BETWEEN 6 PRECEDING AND CURRENT ROW\r\n) as rolling_7day_sum,\r\nCASE\r\nWHEN da.transaction_date < fc.first_cancellation_date THEN 'Before'\r\nWHEN da.transaction_date >= fc.first_cancellation_date THEN 'After'\r\nEND as period\r\nFROM mx_daily_amounts da\r\nLEFT JOIN first_cancellations fc ON da.id_customer = fc.id_customer\r\nWHERE fc.first_cancellation_date IS NOT NULL\r\n)\r\nSELECT\r\nid_customer,\r\nperiod,\r\nAVG(rolling_7day_sum) as avg_7day_rolling_sum,\r\nCOUNT(*) as days_count\r\nFROM rolling_amounts\r\nWHERE period IS NOT NULL\r\nGROUP BY id_customer, period\r\nORDER BY id_customer, period;",
+    "gold_tables": [
+      "mf_demo.mf_demo_customers",
+      "mf_demo.mf_demo_transactions"
+    ],
+    "gold_result": {
+      "columns": [
+        "id_customer",
+        "period",
+        "avg_7day_rolling_sum",
+        "days_count"
+      ],
+      "rows": [
+        [
+          "c500003",
+          "After",
+          1483.8014285714287,
+          7
+        ],
+        [
+          "c500003",
+          "Before",
+          223.34,
+          1
+        ]
+      ],
+      "row_count": 2
+    }
+  }
+]
