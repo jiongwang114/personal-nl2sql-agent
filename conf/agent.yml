@@ -1,6 +1,6 @@
 agent:
   home: ~/.dataengineer
-  target: deepseek
+  target: openai
   providers:
     openai:
       api_key: ${OPENAI_API_KEY}
