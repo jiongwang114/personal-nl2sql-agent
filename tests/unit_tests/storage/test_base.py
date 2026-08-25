@@ -414,6 +414,28 @@ class TestSearchRouting:
         assert result.num_rows >= 0
         assert "vector" not in result.column_names
 
+    def test_search_bm25_mode_ranks_identifier_match(self, tmp_path):
+        """BM25 mode ranks a row whose table identifier matches the query."""
+        store = self._make_store(tmp_path)
+        store.store_batch([self._make_row(i) for i in range(3)])
+
+        result = store.search("table_2", query_type="bm25", top_n=1)
+
+        assert result.num_rows == 1
+        assert result.column("table_name")[0].as_py() == "table_2"
+        assert "vector" not in result.column_names
+
+    def test_search_hybrid_bm25_returns_ranked_rows(self, tmp_path):
+        """Hybrid BM25 mode preserves the normal result contract."""
+        store = self._make_store(tmp_path)
+        store.store_batch([self._make_row(i) for i in range(3)])
+
+        result = store.search("table_1", query_type="hybrid_bm25", top_n=2)
+
+        assert result.num_rows == 2
+        assert "_distance" in result.column_names
+        assert "vector" not in result.column_names
+
 
 # ---------------------------------------------------------------------------
 # table_size

@@ -1,7 +1,12 @@
+# Copyright 2025-present DatusAI, Inc.
+# Licensed under the Apache License, Version 2.0.
+# See http://www.apache.org/licenses/LICENSE-2.0 for details.
 
 from __future__ import annotations
 
 import time
+import math
+import re
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Any, Dict, List, Optional, Union
@@ -450,11 +455,86 @@ class BaseEmbeddingStore(StorageBase):
 
         if query_type == "hybrid":
             search_result = self._search_hybrid(query_txt, select_fields, top_n, where)
+        elif query_type in {"bm25", "hybrid_bm25"}:
+            search_result = self._search_bm25_hybrid(query_txt, select_fields, top_n, where, query_type)
         else:
             search_result = self._search_vector(query_txt, select_fields, top_n, where)
         if self.vector_column_name in search_result.column_names:
             search_result = search_result.drop([self.vector_column_name])
         return search_result
+
+    @staticmethod
+    def _bm25_tokens(text: str) -> list[str]:
+        """Tokenize identifiers and natural-language metadata for BM25."""
+        return re.findall(r"[a-z0-9_]+", str(text).lower())
+
+    def _search_bm25_hybrid(
+        self,
+        query_txt: str,
+        select_fields: Optional[List[str]] = None,
+        top_n: Optional[int] = None,
+        where: WhereExpr = None,
+        query_type: str = "bm25",
+    ) -> pa.Table:
+        """Run local BM25 over stored text, optionally fused with vector rank.
+
+        The metadata tables are small and already filtered by ``where``. Computing
+        BM25 over the filtered rows avoids a second index dependency and keeps the
+        exact same result contract as vector search.
+        """
+        self._ensure_table_ready()
+        rows = self.table.search_all(where=where, select_fields=None, limit=None).to_pylist()
+        if not rows:
+            return pa.table({})
+        source = self.vector_source_name
+        docs = [self._bm25_tokens(row.get(source, "")) for row in rows]
+        query = self._bm25_tokens(query_txt)
+        n_docs = len(docs)
+        avg_len = sum(len(doc) for doc in docs) / n_docs if n_docs else 1.0
+        doc_freq: dict[str, int] = {}
+        for doc in docs:
+            for term in set(doc):
+                doc_freq[term] = doc_freq.get(term, 0) + 1
+        scores: list[float] = []
+        k1, b = 1.2, 0.75
+        for doc in docs:
+            counts = {term: doc.count(term) for term in set(doc)}
+            score = 0.0
+            for term in query:
+                if term not in counts:
+                    continue
+                idf = math.log(1.0 + (n_docs - doc_freq.get(term, 0) + 0.5) / (doc_freq.get(term, 0) + 0.5))
+                tf = counts[term]
+                norm = tf * (k1 + 1.0) / (tf + k1 * (1.0 - b + b * len(doc) / max(avg_len, 1.0)))
+                score += idf * norm
+            scores.append(score)
+
+        vector_scores = [0.0] * n_docs
+        if query_type == "hybrid_bm25":
+            vector_rows = self._search_vector(query_txt, select_fields=None, top_n=n_docs, where=where).to_pylist()
+            by_id = {str(row.get("identifier")): index for index, row in enumerate(rows)}
+            for rank, row in enumerate(vector_rows):
+                index = by_id.get(str(row.get("identifier")))
+                if index is not None:
+                    vector_scores[index] = 1.0 / (rank + 1.0)
+            max_vector = max(vector_scores) or 1.0
+            vector_scores = [score / max_vector for score in vector_scores]
+        max_bm25 = max(scores) or 1.0
+        scores = [score / max_bm25 for score in scores]
+        combined = [score if query_type == "bm25" else 0.6 * score + 0.4 * vector_scores[i] for i, score in enumerate(scores)]
+        order = sorted(range(n_docs), key=lambda i: combined[i], reverse=True)
+        limit = top_n or n_docs
+        output = []
+        for i in order[:limit]:
+            row = dict(rows[i])
+            row["_distance"] = float(1.0 - combined[i])
+            output.append(row)
+        result = pa.Table.from_pylist(output)
+        if select_fields:
+            fields = [field for field in select_fields if field in result.column_names]
+            if fields:
+                result = result.select(fields + (["_distance"] if "_distance" in result.column_names and "_distance" not in fields else []))
+        return result
 
     def _search_hybrid(
         self,
