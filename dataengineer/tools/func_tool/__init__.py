@@ -1,4 +1,3 @@
-
 from dataengineer.tools.func_tool.ask_user_tools import AskUserTool
 from dataengineer.tools.func_tool.base import FuncToolResult, trans_to_function_tool
 from dataengineer.tools.func_tool.context_search import ContextSearchTools
@@ -10,6 +9,7 @@ from dataengineer.tools.func_tool.generation_tools import GenerationTools
 from dataengineer.tools.func_tool.plan_tools import PlanTool, SessionTodoStorage
 from dataengineer.tools.func_tool.platform_doc_search import PlatformDocSearchTool
 from dataengineer.tools.func_tool.semantic_tools import SemanticTools
+from dataengineer.tools.func_tool.sql_guard import SQLGuardTools
 from dataengineer.tools.func_tool.sub_agent_task_tool import SubAgentTaskTool
 
 __all__ = [
@@ -27,6 +27,7 @@ __all__ = [
     "filesystem_function_tools",
     "FilesystemFuncTool",
     "SemanticTools",
+    "SQLGuardTools",
     "GenSemanticModelTools",
     "PlatformDocSearchTool",
     "SubAgentTaskTool",

@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 """
 DataEngineer MCP Server
@@ -86,6 +85,7 @@ from dataengineer.tools.func_tool.base import FuncToolResult
 from dataengineer.tools.func_tool.context_search import ContextSearchTools
 from dataengineer.tools.func_tool.database import DBFuncTool
 from dataengineer.tools.func_tool.reference_template_tools import ReferenceTemplateTools
+from dataengineer.tools.func_tool.sql_guard import SQLGuardTools
 from dataengineer.utils.loggings import configure_logging, get_logger
 
 # Re-export for external use
@@ -113,6 +113,7 @@ from dataengineer.utils.mcp_decorators import get_tool_registry  # noqa: E402
 assert DBFuncTool  # Ensure imported and decorator ran
 assert ContextSearchTools  # Ensure imported and decorator ran
 assert ReferenceTemplateTools  # Ensure imported and decorator ran
+assert SQLGuardTools  # Ensure imported and decorator ran
 
 
 # ============================================================================

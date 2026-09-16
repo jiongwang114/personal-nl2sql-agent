@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dataengineer.local/contracts/sql-task-state.schema.json",
+  "title": "SQL Task State",
+  "type": "object",
+  "required": ["version", "request_id", "runtime_variant", "state", "question", "datasource", "dialect", "repair_attempts"],
+  "properties": {
+    "version": { "const": "1.0" },
+    "request_id": { "type": "string", "minLength": 1 },
+    "runtime_variant": { "enum": ["single", "multi"] },
+    "state": {
+      "enum": ["received", "classified", "schema_ready", "sql_generated", "guard_passed", "reviewed", "executed", "execution_failed", "diagnosed", "sql_repaired", "interpreted", "completed", "needs_clarification", "failed"]
+    },
+    "question": { "type": "string", "minLength": 1 },
+    "datasource": { "type": "string", "minLength": 1 },
+    "dialect": { "type": "string", "minLength": 1 },
+    "schema_context": { "type": "array", "items": { "type": "object" }, "default": [] },
+    "candidate_sql": { "type": "string", "default": "" },
+    "guard": { "$ref": "sql-tool-result.schema.json#/$defs/guardResult" },
+    "review": { "type": "object" },
+    "execution": { "$ref": "sql-tool-result.schema.json#/$defs/executionResult" },
+    "diagnosis": { "type": "object" },
+    "repair_attempts": { "type": "integer", "minimum": 0, "maximum": 2 },
+    "final_answer": { "type": "object" }
+  },
+  "additionalProperties": false
+}
