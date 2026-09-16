@@ -95,7 +95,29 @@ export default function (pi: ExtensionAPI) {
 			top_n: Type.Optional(Type.Integer({ minimum: 1, maximum: 20, default: 5 })),
 		}),
 	);
-	registerMcpTool(pi, "list_tables", "List visible tables and views.", Type.Object({ datasource }));
+	registerMcpTool(
+		pi,
+		"list_schemas",
+		"List visible schemas. Use this before table inspection when the schema is not already known.",
+		Type.Object({
+			catalog: Type.Optional(Type.String()),
+			database: Type.Optional(Type.String()),
+			include_sys: Type.Optional(Type.Boolean()),
+			datasource,
+		}),
+	);
+	registerMcpTool(
+		pi,
+		"list_tables",
+		"List visible tables and views within an optional schema. Never assume the schema is public.",
+		Type.Object({
+			catalog: Type.Optional(Type.String()),
+			database: Type.Optional(Type.String()),
+			schema_name: Type.Optional(Type.String()),
+			include_views: Type.Optional(Type.Boolean()),
+			datasource,
+		}),
+	);
 	registerMcpTool(
 		pi,
 		"describe_table",

@@ -97,23 +97,27 @@ async def run_case(client: httpx.AsyncClient, base_url: str, case: BenchmarkCase
             "session_id": f"benchmark_{variant}_{case.task_id}",
             "source": "benchmark",
             "runtime_variant": variant,
+            "database": case.datasource,
         },
         timeout=None,
     )
     response.raise_for_status()
     parsed = parse_sse(response.text)
     metrics = parsed["metrics"]
+    error = parsed["error"] or None
+    if not parsed["answer"].strip() and error is None:
+        error = "EMPTY_ANSWER: runtime completed without assistant text"
     return {
         "variant": variant,
         "task_id": case.task_id,
         "question": case.question,
         "expected_sql": case.expected_sql,
         "answer": parsed["answer"],
-        "error": parsed["error"] or None,
+        "error": error,
         "result_correct": None,
         "needs_human_review": True,
         "latency_ms": round((time.perf_counter() - started) * 1000, 2),
-        "tool_calls": metrics.get("action_count"),
+        "action_count": metrics.get("action_count"),
         "input_tokens": metrics.get("input_tokens"),
         "output_tokens": metrics.get("output_tokens"),
         "token_cost": None,
@@ -123,6 +127,16 @@ async def run_case(client: httpx.AsyncClient, base_url: str, case: BenchmarkCase
 
 async def run(args: argparse.Namespace) -> int:
     cases = load_cases(args.cases, args.limit)
+    if args.datasource:
+        cases = [
+            BenchmarkCase(
+                task_id=case.task_id,
+                question=case.question,
+                expected_sql=case.expected_sql,
+                datasource=args.datasource,
+            )
+            for case in cases
+        ]
     variants = [item.strip() for item in args.variants.split(",") if item.strip()]
     invalid = set(variants) - {"legacy", "single", "multi"}
     if invalid:
@@ -149,6 +163,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--base-url", default="http://127.0.0.1:8501")
     parser.add_argument("--variants", default="legacy,single,multi")
+    parser.add_argument("--datasource", default="", help="Override the datasource for every benchmark case")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--resume", action="store_true")
     return asyncio.run(run(parser.parse_args()))

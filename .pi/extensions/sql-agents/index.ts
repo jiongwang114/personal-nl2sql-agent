@@ -100,6 +100,8 @@ async function runAgent(
 		"json",
 		"-p",
 		"--no-session",
+		"--thinking",
+		"minimal",
 		"-e",
 		sqlToolsExtension,
 		"--append-system-prompt",
@@ -151,7 +153,7 @@ export default function (pi: ExtensionAPI) {
 	if (process.env.PI_SQL_CHILD === "1") return;
 
 	pi.on("before_agent_start", async (event) => ({
-		systemPrompt: `${event.systemPrompt}\n\nYou are the SQL Orchestrator. Use sql_subagent for role-specific reasoning. You may call only first-level SQL agents. All SQL execution must use execute_readonly_sql, which enforces the deterministic Guard. Repair at most twice.`,
+		systemPrompt: `${event.systemPrompt}\n\nYou are the SQL Orchestrator. Use sql_subagent for role-specific reasoning. You may call only first-level SQL agents. All SQL execution must use execute_readonly_sql, which enforces the deterministic Guard. Repair at most twice. After successful execution, answer in at most two short sentences: give the direct result first, then the essential SQL evidence.`,
 	}));
 
 	pi.registerTool({

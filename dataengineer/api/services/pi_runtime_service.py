@@ -29,7 +29,7 @@ from dataengineer.api.models.cli_models import (
 
 RuntimeVariant = Literal["single", "multi"]
 
-SINGLE_TOOLS = "list_tables,describe_table,get_table_ddl,validate_sql,execute_readonly_sql"
+SINGLE_TOOLS = "list_schemas,list_tables,describe_table,get_table_ddl,validate_sql,execute_readonly_sql"
 MULTI_TOOLS = "sql_subagent,validate_sql,execute_readonly_sql"
 SQL_EXTENSIONS = ("sql-tools", "sql-agents", "sql-observability")
 
@@ -78,6 +78,8 @@ class PiRuntimeService:
             "--no-session",
             "--model",
             self.model,
+            "--thinking",
+            "minimal",
         ]
         for extension in SQL_EXTENSIONS:
             command.extend(["-e", str(self.project_root / ".pi" / "extensions" / extension / "index.ts")])

@@ -18,7 +18,7 @@ def test_build_command_uses_variant_tools(tmp_path: Path):
     multi = service.build_command("multi", request, "demo")
 
     assert "custom/gpt-5.5" in single
-    assert "list_tables,describe_table,get_table_ddl,validate_sql,execute_readonly_sql" in single
+    assert "list_schemas,list_tables,describe_table,get_table_ddl,validate_sql,execute_readonly_sql" in single
     assert "sql_subagent,validate_sql,execute_readonly_sql" in multi
     assert "--append-system-prompt" in single
     assert "--append-system-prompt" not in multi
@@ -28,6 +28,8 @@ def test_build_command_uses_variant_tools(tmp_path: Path):
         str(tmp_path / ".pi/extensions/sql-observability/index.ts"),
     ]
     for command in (single, multi):
+        thinking_index = command.index("--thinking")
+        assert command[thinking_index + 1] == "minimal"
         assert command.count("-e") == len(expected_extensions)
         assert all(extension in command for extension in expected_extensions)
 

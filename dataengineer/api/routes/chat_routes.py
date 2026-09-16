@@ -88,7 +88,7 @@ async def stream_chat(
         if request.runtime_variant == "legacy":
             events = svc.chat.stream_chat(request, sub_agent_id=sub_agent_id, user_id=ctx.user_id)
         else:
-            datasource = svc.agent_config.current_datasource
+            datasource = request.database or svc.agent_config.current_datasource
             events = svc.pi_runtime.stream_chat(request, datasource=datasource)
         async for event in events:
             yield f"id: {event.id}\nevent: {event.event}\ndata: {event.data.model_dump_json()}\n\n"

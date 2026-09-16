@@ -218,6 +218,23 @@ class TestStreamChat404Gate:
         svc.pi_runtime.stream_chat.assert_called_once_with(request, datasource="demo")
         svc.chat.stream_chat.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_pi_variant_uses_request_database(self):
+        svc = _mock_svc_with_nodes()
+        svc.agent_config.current_datasource = "demo"
+
+        async def empty_events():
+            if False:
+                yield None
+
+        svc.pi_runtime.stream_chat = MagicMock(return_value=empty_events())
+        request = StreamChatInput(message="hi", runtime_variant="single", database="benchmark_demo")
+
+        response = await stream_chat(request, svc, MagicMock(user_id="u1"))
+        _ = [chunk async for chunk in response.body_iterator]
+
+        svc.pi_runtime.stream_chat.assert_called_once_with(request, datasource="benchmark_demo")
+
 
 class TestRuntimeVariantModel:
     def test_defaults_to_legacy(self):

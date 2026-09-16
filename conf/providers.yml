@@ -2,6 +2,14 @@
 # Add new providers/models here without changing Python code.
 
 providers:
+  custom:
+    type: openai
+    base_url: https://codex.wlbclub.com/v1
+    api_key_env: WLB_API_KEY
+    default_model: gpt-5.5
+    models:
+      - gpt-5.5
+
   openai:
     type: openai
     base_url: https://api.openai.com/v1
@@ -149,6 +157,9 @@ providers:
 # Model-specific parameter overrides
 # Some models enforce fixed values; these are auto-applied during init.
 model_overrides:
+  gpt-5.5:
+    enable_thinking: true
+
   kimi-k2.5:
     temperature: 1.0
     top_p: 0.95
