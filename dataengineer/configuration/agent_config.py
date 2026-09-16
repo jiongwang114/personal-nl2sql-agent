@@ -1,4 +1,3 @@
-
 import hashlib
 import os
 import re
@@ -397,7 +396,8 @@ def _parse_single_file_db(db_config: Dict[str, Any], dialect: str) -> DbConfig:
         db_name = login_name
     if not uri.startswith(dialect):
         uri = f"{dialect}:///{os.path.expanduser(uri)}"
-    return DbConfig(type=dialect, uri=uri, database=db_name, schema=db_config.get("schema", ""), logic_name=login_name)
+    normalized = {**db_config, "type": dialect, "uri": uri, "database": db_name, "name": login_name}
+    return DbConfig.filter_kwargs(DbConfig, normalized)
 
 
 @dataclass

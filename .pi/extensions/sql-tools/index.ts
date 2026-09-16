@@ -15,7 +15,8 @@ const projectRoot = path.resolve(extensionDir, "../../..");
 const bridgePath = path.join(projectRoot, "scripts", "pi_mcp_bridge.py");
 const windowsPython = path.join(projectRoot, ".venv", "Scripts", "python.exe");
 const posixPython = path.join(projectRoot, ".venv", "bin", "python");
-const python = fs.existsSync(windowsPython) ? windowsPython : fs.existsSync(posixPython) ? posixPython : "python";
+const python = process.env.PI_SQL_PYTHON
+	?? (fs.existsSync(windowsPython) ? windowsPython : fs.existsSync(posixPython) ? posixPython : "python");
 
 function parseEnvelope(stdout: string): MCPEnvelope {
 	const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
@@ -37,7 +38,16 @@ async function callMcp(
 ): Promise<MCPEnvelope> {
 	const result = await pi.exec(
 		python,
-		[bridgePath, "--datasource", datasource, "--tool", tool, "--arguments", JSON.stringify(args)],
+		[
+			bridgePath,
+			"--datasource",
+			datasource,
+			"--tool",
+			tool,
+			"--arguments",
+			JSON.stringify(args),
+			...(process.env.PI_SQL_CONFIG ? ["--config", process.env.PI_SQL_CONFIG] : []),
+		],
 		{ cwd: projectRoot, signal, timeout: 120_000 },
 	);
 	const envelope = parseEnvelope(result.stdout);

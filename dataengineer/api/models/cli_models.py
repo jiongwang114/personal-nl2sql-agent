@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -279,6 +279,9 @@ class StreamChatInput(ChatInput):
     subagent_id: Optional[str] = Field(default=None, description="Subagent ID (builtin name or DB SubAgent id)")
     prompt_version: Optional[str] = Field(default=None, description="Prompt version")
     prompt_language: str = Field(default="en", description="Prompt language")
+    runtime_variant: Literal["legacy", "single", "multi"] = Field(
+        default="legacy", description="Agent runtime used for this request"
+    )
     language: Optional[str] = Field(
         default=None,
         description=(

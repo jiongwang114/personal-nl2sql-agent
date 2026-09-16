@@ -168,6 +168,39 @@
 
       .brand-spacer { flex: 1; }
 
+      .runtime-selector {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(72px, 1fr));
+        height: 28px;
+        border: 1px solid #555;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+
+      .runtime-option {
+        min-width: 72px;
+        padding: 0 10px;
+        border: 0;
+        border-right: 1px solid #555;
+        border-radius: 0;
+        background: transparent !important;
+        color: #999 !important;
+        font-size: 11px;
+        cursor: pointer;
+      }
+
+      .runtime-option:last-child { border-right: 0; }
+
+      .runtime-option[aria-checked="true"] {
+        background: #eee !important;
+        color: #111 !important;
+      }
+
+      .runtime-option:focus-visible {
+        outline: 2px solid #fff;
+        outline-offset: -3px;
+      }
+
       .brand-dot {
         width: 8px;
         height: 8px;
@@ -196,6 +229,13 @@
 
       .theme-toggle:hover {
         background: rgba(255,255,255,0.08);
+      }
+
+      @media (max-width: 640px) {
+        .brand-tagline, .brand-version { display: none; }
+        .brand-header { gap: 8px; padding: 0 8px; }
+        .runtime-selector { grid-template-columns: repeat(3, minmax(48px, 1fr)); }
+        .runtime-option { min-width: 48px; padding: 0 6px; }
       }
 
       /* ── Main Content ────────────────────────────────────────────────── */
@@ -320,6 +360,11 @@
         <span class="brand-title">Data Engineering Agent</span>
         <span class="brand-tagline">Welcome</span>
         <div class="brand-spacer"></div>
+        <div class="runtime-selector" role="radiogroup" aria-label="Agent runtime">
+          <button class="runtime-option" type="button" role="radio" data-runtime="legacy" aria-checked="true">旧版</button>
+          <button class="runtime-option" type="button" role="radio" data-runtime="single" aria-checked="false">单 Agent</button>
+          <button class="runtime-option" type="button" role="radio" data-runtime="multi" aria-checked="false">多 Agent</button>
+        </div>
         <span class="brand-version">v0.2.6</span>
         <div class="brand-dot" title="Connected"></div>
         <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark theme">
@@ -352,6 +397,61 @@
           document.documentElement.setAttribute('data-theme', 'dark');
           document.getElementById('theme-icon').innerHTML = '&#9790;';
         }
+      })();
+
+      /* ── Runtime Selection ───────────────────────────────────────────── */
+      var runtimeStorageKey = 'data-engineer-runtime';
+      var selectedRuntime = 'legacy';
+      try {
+        var storedRuntime = localStorage.getItem(runtimeStorageKey);
+        if (['legacy', 'single', 'multi'].indexOf(storedRuntime) !== -1) selectedRuntime = storedRuntime;
+      } catch(e) {}
+
+      function selectRuntime(runtime) {
+        selectedRuntime = runtime;
+        var options = document.querySelectorAll('.runtime-option');
+        for (var i = 0; i < options.length; i++) {
+          options[i].setAttribute('aria-checked', String(options[i].dataset.runtime === runtime));
+        }
+        try { localStorage.setItem(runtimeStorageKey, runtime); } catch(e) {}
+      }
+
+      (function initializeRuntimeSelector() {
+        var options = document.querySelectorAll('.runtime-option');
+        for (var i = 0; i < options.length; i++) {
+          options[i].addEventListener('click', function(event) {
+            selectRuntime(event.currentTarget.dataset.runtime);
+          });
+        }
+        selectRuntime(selectedRuntime);
+      })();
+
+      (function installRuntimeRequestAdapter() {
+        var originalFetch = window.fetch.bind(window);
+        window.fetch = async function(input, init) {
+          var url = typeof input === 'string' ? input : input.url;
+          var method = (init && init.method) || (typeof input !== 'string' && input.method) || 'GET';
+          if (!url || url.indexOf('/api/v1/chat/stream') === -1 || method.toUpperCase() !== 'POST') {
+            return originalFetch(input, init);
+          }
+
+          var body = init && init.body;
+          if (typeof body !== 'string' && typeof input !== 'string') body = await input.clone().text();
+          if (typeof body !== 'string') return originalFetch(input, init);
+
+          try {
+            var payload = JSON.parse(body);
+            payload.runtime_variant = selectedRuntime;
+            var headers = new Headers((init && init.headers) || (typeof input !== 'string' ? input.headers : undefined));
+            headers.set('Content-Type', 'application/json');
+            return originalFetch(input, Object.assign({}, init || {}, {
+              body: JSON.stringify(payload),
+              headers: headers,
+            }));
+          } catch(e) {
+            return originalFetch(input, init);
+          }
+        };
       })();
 
       /* ── Initialize Chatbot ──────────────────────────────────────────── */

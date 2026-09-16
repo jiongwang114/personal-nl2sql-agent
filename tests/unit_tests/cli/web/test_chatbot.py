@@ -1,4 +1,3 @@
-
 """Unit tests for dataengineer/cli/web/chatbot.py (FastAPI-based web chatbot)."""
 
 import argparse
@@ -66,7 +65,7 @@ class TestReadTemplate:
         from dataengineer.cli.web.chatbot import _read_template
 
         html = _read_template()
-        assert "DataEngineerChatbot" in html
+        assert "DatusChatbot" in html
         assert "chatbot-root" in html
         assert "{{ request_origin_json }}" in html
         assert "{{ user_name_json }}" in html
@@ -265,6 +264,17 @@ class TestCreateWebApp:
             root_routes = [r for r in app.routes if hasattr(r, "path") and r.path == "/"]
             assert len(root_routes) > 0
 
+    def test_html_includes_runtime_selector_and_request_adapter(self):
+        from dataengineer.cli.web.chatbot import _read_template
+
+        html = _read_template()
+
+        assert 'data-runtime="legacy"' in html
+        assert 'data-runtime="single"' in html
+        assert 'data-runtime="multi"' in html
+        assert "payload.runtime_variant = selectedRuntime" in html
+        assert "/api/v1/chat/stream" in html
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. run_web_interface
@@ -385,7 +395,7 @@ class TestTemplateFile:
         template_path = os.path.join(_TEMPLATES_DIR, "index.html")
         with open(template_path, encoding="utf-8") as f:
             content = f.read()
-        assert "DataEngineerChatbot.initChatbot" in content
+        assert "DatusChatbot.initChatbot" in content
         assert "chatbot-root" in content
         assert "{{ chatbot_js }}" in content
         assert "{{ chatbot_css }}" in content

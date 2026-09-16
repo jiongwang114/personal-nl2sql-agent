@@ -311,6 +311,20 @@ class TestDBManager:
         uris = mgr.get_db_uris("ns")
         assert uris["db1"] == "sqlite:///test.db"
 
+    def test_duckdb_builtin_options_are_preserved(self):
+        mgr = DBManager({})
+        cfg = _cfg(
+            type="duckdb",
+            uri="duckdb:///test.db",
+            extra={"read_only": True, "enable_external_access": False, "memory_limit": "1GB"},
+        )
+
+        result = mgr._db_config_to_connection_config(cfg)
+
+        assert result.read_only is True
+        assert result.enable_external_access is False
+        assert result.memory_limit == "1GB"
+
 
 # ---------------------------------------------------------------------------
 # DBManager._db_config_to_connection_config — adapter branch (lines 269-309)

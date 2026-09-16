@@ -1,4 +1,3 @@
-
 from typing import Any, Dict, List, Literal, Optional, Set, override
 
 import duckdb
@@ -49,6 +48,7 @@ class DuckdbConnector(BaseSqlConnector, SchemaNamespaceMixin, MigrationTargetMix
         super().__init__(config, dialect=DBType.DUCKDB)
         self.db_path = config.db_path.replace("duckdb:///", "")
         self.connection: Optional[duckdb.DuckDBPyConnection] = None
+        self.read_only = config.read_only
         self.enable_external_access = config.enable_external_access
         self.memory_limit = config.memory_limit
 
@@ -67,7 +67,7 @@ class DuckdbConnector(BaseSqlConnector, SchemaNamespaceMixin, MigrationTargetMix
 
         try:
             # Connect to DuckDB
-            self.connection = duckdb.connect(self.db_path)
+            self.connection = duckdb.connect(self.db_path, read_only=self.read_only)
 
             # Configure settings
             if self.memory_limit:

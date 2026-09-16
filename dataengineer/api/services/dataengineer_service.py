@@ -8,6 +8,7 @@ import dataclasses
 import hashlib
 import json
 
+from dataengineer.api.services.pi_runtime_service import PiRuntimeService
 from dataengineer.configuration.agent_config import AgentConfig
 from dataengineer.utils.loggings import get_logger
 
@@ -53,6 +54,7 @@ class DataEngineerService:
         self._visualization = None
         self._tool = None
         self._success_story = None
+        self._pi_runtime = None
 
     # ------------------------------------------------------------------
     # Read-only properties
@@ -107,6 +109,12 @@ class DataEngineerService:
                 project_id=self._project_id,
             )
         return self._chat
+
+    @property
+    def pi_runtime(self):
+        if self._pi_runtime is None:
+            self._pi_runtime = PiRuntimeService()
+        return self._pi_runtime
 
     @property
     def cli(self):

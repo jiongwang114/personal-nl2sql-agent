@@ -1,4 +1,3 @@
-
 from collections import defaultdict
 from typing import Callable, Dict, Optional, Tuple, Union
 
@@ -311,6 +310,9 @@ class DBManager:
                 db_path=db_path,
                 timeout_seconds=timeout_seconds,
                 database_name=None,  # Let connector extract from file path
+                read_only=bool((db_config.extra or {}).get("read_only", False)),
+                enable_external_access=bool((db_config.extra or {}).get("enable_external_access", True)),
+                memory_limit=(db_config.extra or {}).get("memory_limit"),
             )
 
         else:

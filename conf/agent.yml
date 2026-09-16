@@ -11,6 +11,7 @@ agent:
       demo:
         type: duckdb
         uri: duckdb:///sample_data/duckdb-demo.duckdb
+        read_only: true
   workflow:
     plan: planA
     planA:

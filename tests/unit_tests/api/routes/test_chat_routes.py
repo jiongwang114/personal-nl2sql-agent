@@ -1,4 +1,3 @@
-
 """Unit tests for dataengineer/api/routes/chat_routes.py — submit_user_interaction endpoint."""
 
 import json
@@ -198,3 +197,32 @@ class TestStreamChat404Gate:
 
         response = await stream_chat(request, svc, ctx)
         assert response is not None
+
+    @pytest.mark.asyncio
+    async def test_pi_variant_routes_to_pi_runtime(self):
+        svc = _mock_svc_with_nodes()
+        svc.agent_config.current_datasource = "demo"
+
+        async def empty_events():
+            if False:
+                yield None
+
+        svc.pi_runtime.stream_chat = MagicMock(return_value=empty_events())
+        ctx = MagicMock(user_id="u1")
+        request = StreamChatInput(message="hi", runtime_variant="multi")
+
+        response = await stream_chat(request, svc, ctx)
+        _ = [chunk async for chunk in response.body_iterator]
+
+        assert response is not None
+        svc.pi_runtime.stream_chat.assert_called_once_with(request, datasource="demo")
+        svc.chat.stream_chat.assert_not_called()
+
+
+class TestRuntimeVariantModel:
+    def test_defaults_to_legacy(self):
+        assert StreamChatInput(message="hi").runtime_variant == "legacy"
+
+    def test_rejects_unknown_variant(self):
+        with pytest.raises(ValueError):
+            StreamChatInput(message="hi", runtime_variant="unknown")

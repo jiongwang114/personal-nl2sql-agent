@@ -37,6 +37,7 @@ const transitions: Record<string, { from: SqlState[]; to: string }> = {
 const extensionDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(extensionDir, "../../..");
 const agentsDir = path.join(projectRoot, ".pi", "agents");
+const sqlToolsExtension = path.join(projectRoot, ".pi", "extensions", "sql-tools", "index.ts");
 
 function parseTools(value: unknown): string[] {
 	if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
@@ -94,7 +95,16 @@ async function runAgent(
 	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-sql-agent-"));
 	const promptPath = path.join(tempDir, `${definition.name}.md`);
 	fs.writeFileSync(promptPath, definition.systemPrompt, { encoding: "utf8", mode: 0o600 });
-	const args = ["--mode", "json", "-p", "--no-session", "--append-system-prompt", promptPath];
+	const args = [
+		"--mode",
+		"json",
+		"-p",
+		"--no-session",
+		"-e",
+		sqlToolsExtension,
+		"--append-system-prompt",
+		promptPath,
+	];
 	if (model) args.push("--model", model);
 	if (definition.tools.length > 0) args.push("--tools", definition.tools.join(","));
 	else args.push("--no-tools");
