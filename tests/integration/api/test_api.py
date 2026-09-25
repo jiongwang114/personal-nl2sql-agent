@@ -266,8 +266,8 @@ class TestAPI:
 
     @pytest.mark.asyncio
     async def test_root_endpoint(self, api_client):
-        """Test root endpoint returns API info."""
+        """Test the root endpoint serves the frontend."""
         resp = await api_client.get("/")
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
-        data = resp.json()
-        assert "version" in data, "Root endpoint should contain 'version'"
+        assert resp.headers["content-type"].startswith("text/html")
+        assert "<title>DataEngineer" in resp.text

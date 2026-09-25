@@ -21,10 +21,10 @@ from dataengineer.api.models.cli_models import (
     CompactSessionData,
     CompactSessionInput,
     IMessageContent,
+    SessionEventData,
     SSEErrorData,
     SSEEvent,
     SSEMessagePayload,
-    SessionEventData,
     StreamChatInput,
 )
 from dataengineer.api.services.action_sse_converter import action_to_sse_event
