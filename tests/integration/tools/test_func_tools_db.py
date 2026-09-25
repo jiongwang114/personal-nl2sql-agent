@@ -258,13 +258,13 @@ class TestConnectorInterface:
         finally:
             connector.close()
 
-    def test_duckdb_test_connection(self):
+    def test_duckdb_test_connection(self, tmp_path):
         """Test DuckDB connector test_connection() health check."""
         from datus_db_core import connector_registry
 
         from dataengineer.tools.db_tools.config import DuckDBConfig
 
-        config = DuckDBConfig(db_path="tests/data/datus_metricflow_db/duck.db")
+        config = DuckDBConfig(db_path=str(tmp_path / "duck.db"))
         connector = connector_registry.create_connector("duckdb", config)
         try:
             result = connector.test_connection()
