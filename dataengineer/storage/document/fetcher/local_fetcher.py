@@ -192,7 +192,7 @@ class LocalFetcher(BaseFetcher):
 
             # Calculate relative path from base
             try:
-                doc_path = str(file_path.relative_to(base_path))
+                doc_path = file_path.relative_to(base_path).as_posix()
             except ValueError:
                 # If file is outside base_path, use filename
                 doc_path = file_path.name

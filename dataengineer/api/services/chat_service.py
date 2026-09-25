@@ -24,6 +24,7 @@ from dataengineer.api.models.cli_models import (
     SSEErrorData,
     SSEEvent,
     SSEMessagePayload,
+    SessionEventData,
     StreamChatInput,
 )
 from dataengineer.api.services.action_sse_converter import action_to_sse_event
@@ -68,7 +69,9 @@ class ChatService:
                 user_id=user_id,
             )
         except (ValueError, DataEngineerException) as e:
-            error_code = e.code.name if isinstance(e, DataEngineerException) else ErrorCode.COMMON_VALIDATION_FAILED.name
+            error_code = (
+                e.code.name if isinstance(e, DataEngineerException) else ErrorCode.COMMON_VALIDATION_FAILED.name
+            )
             yield SSEEvent(
                 id=1,
                 event="error",
@@ -87,6 +90,43 @@ class ChatService:
         """Check if a session exists on disk."""
         session_mgr = SessionManager(session_dir=self._session_dir, scope=user_id)
         return session_mgr.session_exists(session_id)
+
+    async def persist_pi_exchange(
+        self,
+        session_id: str,
+        user_message: str,
+        assistant_message: str,
+        user_id: Optional[str] = None,
+    ) -> None:
+        """Persist a completed Pi turn in the same scoped store used by chat history."""
+        session_mgr = SessionManager(session_dir=self._session_dir, scope=user_id)
+        session = session_mgr.get_session(session_id)
+        await session.add_items(
+            [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": [{"type": "output_text", "text": assistant_message}]},
+            ]
+        )
+
+    def persist_pi_event(
+        self,
+        session_id: str,
+        event_type: str,
+        payload,
+        *,
+        user_id: Optional[str] = None,
+        role: str = "assistant",
+        event_id: Optional[str] = None,
+    ) -> dict:
+        """Persist one Pi process event in the same scoped session store."""
+        session_mgr = SessionManager(session_dir=self._session_dir, scope=user_id)
+        return session_mgr.append_session_event(
+            session_id,
+            event_type,
+            payload,
+            role=role,
+            event_id=event_id,
+        )
 
     def get_model(self) -> Result[ChatModelData]:
         """Return the currently active chat model identity."""
@@ -234,8 +274,9 @@ class ChatService:
             # Use SessionManager to get messages from SQLite
             session_manager = SessionManager(session_dir=self._session_dir, scope=user_id)
             raw_messages = session_manager.get_session_messages(session_id)
+            runtime_events = session_manager.get_session_events(session_id)
 
-            if not raw_messages:
+            if not raw_messages and not runtime_events:
                 return Result[ChatHistoryData](success=True, data=ChatHistoryData())
 
             sse_messages: List[SSEMessagePayload] = []
@@ -276,7 +317,13 @@ class ChatService:
                         event_id += 1
 
             logger.info(f"Retrieved {len(sse_messages)} messages for session {session_id}")
-            return Result[ChatHistoryData](success=True, data=ChatHistoryData(messages=sse_messages))
+            return Result[ChatHistoryData](
+                success=True,
+                data=ChatHistoryData(
+                    messages=sse_messages,
+                    events=[SessionEventData(**event) for event in runtime_events],
+                ),
+            )
 
         except Exception as e:
             logger.error(f"Failed to get history for session {session_id}: {e}")

@@ -2,9 +2,9 @@
 """
 Web Chatbot server for DataEngineer Agent.
 
-Serves a React-based chatbot frontend (``@datus/web-chatbot`` UMD bundle)
-backed by the standard DataEngineer Agent API routes.  Replaces the former
-Streamlit-based implementation with a lightweight FastAPI static-file server.
+Serves the bundled React workbench backed by the standard DataEngineer API.
+The Vite build is committed as package data so ``dataengineer --web`` remains
+a single-command deployment with no Node.js runtime requirement.
 """
 
 import argparse
@@ -23,7 +23,7 @@ from dataengineer.utils.loggings import get_logger
 
 logger = get_logger(__name__)
 
-_TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 # CDN URLs used when --chatbot-dist is NOT provided (production mode).
 _CDN_REACT_JS = "https://unpkg.com/react@18/umd/react.production.min.js"
@@ -59,8 +59,10 @@ def _build_agent_args(args: argparse.Namespace) -> argparse.Namespace:
 
 
 def _read_template() -> str:
-    """Read the HTML template from disk (once)."""
-    template_path = os.path.join(_TEMPLATES_DIR, "index.html")
+    """Read the maintained static frontend entry point."""
+    template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend-static", "index.html"))
+    if not os.path.isfile(template_path):
+        raise FileNotFoundError(f"Static frontend not found: {template_path}")
     with open(template_path, encoding="utf-8") as f:
         return f.read()
 
@@ -81,7 +83,13 @@ def create_web_app(args: argparse.Namespace) -> FastAPI:
     #    so we can replace it with the chatbot HTML page.
     app.routes[:] = [r for r in app.routes if not (hasattr(r, "path") and r.path == "/" and hasattr(r, "methods"))]
 
-    # ── Resolve asset mode: local dist vs CDN ──────────────────────
+    # Serve the first-party workbench before handling the external
+    # --chatbot-dist compatibility path.
+    assets_dir = os.path.join(_STATIC_DIR, "assets")
+    if os.path.isdir(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="workbench-assets")
+
+    # ── Resolve external component asset mode ──────────────────────
     chatbot_dist = getattr(args, "chatbot_dist", None)
     use_local = False
 
@@ -103,7 +111,7 @@ def create_web_app(args: argparse.Namespace) -> FastAPI:
             logger.info(f"Dev mode: serving chatbot assets from {chatbot_dist}")
 
     if not use_local:
-        logger.info("Production mode: loading chatbot assets from CDN")
+        logger.info("Production mode: serving bundled DataEngineer workbench")
 
     # ── Pick asset URLs based on mode ──────────────────────────────
     if use_local:
@@ -135,7 +143,13 @@ def create_web_app(args: argparse.Namespace) -> FastAPI:
         rendered = static_html.replace(
             "{{ request_origin_json }}", json.dumps(str(request.base_url).rstrip("/"))
         ).replace("{{ user_name_json }}", json.dumps(user_name))
-        return HTMLResponse(content=rendered)
+        # The workbench is a single-file development build. Prevent a browser
+        # from keeping an older HTML/inline-JS snapshot after the server is
+        # restarted during local development.
+        return HTMLResponse(
+            content=rendered,
+            headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+        )
 
     return app
 

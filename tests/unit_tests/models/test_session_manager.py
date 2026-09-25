@@ -22,6 +22,7 @@ import os
 import sqlite3
 import time
 import uuid
+from contextlib import closing
 from types import SimpleNamespace
 
 import pytest
@@ -48,7 +49,7 @@ def _insert_messages(session_dir, session_id, messages):
     An optional 'created_at' key controls the timestamp.
     """
     db_path = os.path.join(session_dir, f"{session_id}.db")
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         for idx, msg in enumerate(messages):
             created_at = msg.pop("created_at", f"2025-01-01T00:00:{idx:02d}")
             conn.execute(
@@ -61,7 +62,7 @@ def _insert_messages(session_dir, session_id, messages):
 def _count_messages(session_dir, session_id):
     """Count messages in a session's SQLite database."""
     db_path = os.path.join(session_dir, f"{session_id}.db")
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         cursor = conn.execute(
             "SELECT COUNT(*) FROM agent_messages WHERE session_id = ?",
             (session_id,),
@@ -72,7 +73,7 @@ def _count_messages(session_dir, session_id):
 def _read_messages(session_dir, session_id):
     """Read all messages from a session's SQLite database as parsed dicts."""
     db_path = os.path.join(session_dir, f"{session_id}.db")
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         cursor = conn.execute(
             "SELECT message_data FROM agent_messages WHERE session_id = ? ORDER BY created_at",
             (session_id,),

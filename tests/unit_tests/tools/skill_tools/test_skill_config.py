@@ -207,7 +207,7 @@ class TestSkillMetadata:
         assert data["description"] == "Test skill"
         assert data["tags"] == ["tag1"]
         # Path should be converted to string
-        assert str(data["location"]) == "/test"
+        assert str(data["location"]) == str(Path("/test"))
 
     def test_skill_metadata_content_lazy_loaded(self):
         """Test that content is lazy loaded (initially None)."""

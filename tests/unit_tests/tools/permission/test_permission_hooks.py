@@ -2,6 +2,7 @@
 """Tests for the permission hooks module."""
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -510,7 +511,7 @@ class TestFilesystemZoneBranch:
         mock_broker.request = AsyncMock(return_value=("a", callback))
 
         ctx = MagicMock()
-        ctx.tool_arguments = f'{{"path": "{target}"}}'
+        ctx.tool_arguments = json.dumps({"path": str(target)})
         tool = MagicMock()
         tool.name = "read_file"
 
@@ -533,7 +534,7 @@ class TestFilesystemZoneBranch:
         mock_broker.request = AsyncMock(return_value=("n", callback))
 
         ctx = MagicMock()
-        ctx.tool_arguments = f'{{"path": "{target}"}}'
+        ctx.tool_arguments = json.dumps({"path": str(target)})
         tool = MagicMock()
         tool.name = "read_file"
         with pytest.raises(PermissionDeniedException):
@@ -550,7 +551,7 @@ class TestFilesystemZoneBranch:
         target = tmp_path / "elsewhere.md"
         target.write_text("x")
         ctx = MagicMock()
-        ctx.tool_arguments = f'{{"path": "{target}"}}'
+        ctx.tool_arguments = json.dumps({"path": str(target)})
         tool = MagicMock()
         tool.name = "read_file"
         await hooks.on_tool_start(ctx, MagicMock(), tool)
@@ -600,7 +601,7 @@ class TestFilesystemZoneBranch:
 
         # 1. Hook must not raise and must not prompt.
         ctx = MagicMock()
-        ctx.tool_arguments = f'{{"path": "{external}"}}'
+        ctx.tool_arguments = json.dumps({"path": str(external)})
         hook_tool = MagicMock()
         hook_tool.name = "read_file"
         await hooks.on_tool_start(ctx, MagicMock(), hook_tool)
@@ -633,7 +634,7 @@ class TestFilesystemZoneBranch:
         mock_broker.request = AsyncMock(side_effect=InteractionCancelled())
 
         ctx = MagicMock()
-        ctx.tool_arguments = f'{{"path": "{target}"}}'
+        ctx.tool_arguments = json.dumps({"path": str(target)})
         tool = MagicMock()
         tool.name = "read_file"
         with pytest.raises(PermissionDeniedException):
@@ -649,7 +650,7 @@ class TestFilesystemZoneBranch:
         mock_broker.request = AsyncMock(side_effect=RuntimeError("broker explosion"))
 
         ctx = MagicMock()
-        ctx.tool_arguments = f'{{"path": "{target}"}}'
+        ctx.tool_arguments = json.dumps({"path": str(target)})
         tool = MagicMock()
         tool.name = "read_file"
         with pytest.raises(PermissionDeniedException):
@@ -752,7 +753,7 @@ class TestPermissionPromptLockPerLoop:
             # the currently-running loop.
             mock_broker.request = AsyncMock(return_value=("n", AsyncMock()))
             ctx = MagicMock()
-            ctx.tool_arguments = f'{{"path": "{target}"}}'
+            ctx.tool_arguments = json.dumps({"path": str(target)})
             tool = MagicMock()
             tool.name = "read_file"
             with pytest.raises(PermissionDeniedException):

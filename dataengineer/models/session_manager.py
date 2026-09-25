@@ -7,6 +7,7 @@ import os
 import re
 import sqlite3
 import uuid
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -27,6 +28,47 @@ if TYPE_CHECKING:
 
 
 DEFAULT_CHAT_AGENT = "chat"
+
+_EVENT_SENSITIVE_KEY_RE = re.compile(
+    r"(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|"
+    r"password|passwd|secret|cookie|session[_-]?token)",
+    re.IGNORECASE,
+)
+_EVENT_SENSITIVE_TEXT_RE = (
+    re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE),
+    re.compile(
+        r"(\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|"
+        r"password|passwd|secret|cookie|session[_-]?token|key)\b\s*[:=]\s*)"
+        r"[^\s,;}\]]+",
+        re.IGNORECASE,
+    ),
+)
+_MAX_EVENT_VALUE_LENGTH = 12000
+
+
+def _redact_event_value(value: Any, key: str = "") -> Any:
+    if _EVENT_SENSITIVE_KEY_RE.search(key):
+        return "[REDACTED]"
+    if isinstance(value, dict):
+        return {str(item_key): _redact_event_value(item_value, str(item_key)) for item_key, item_value in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_redact_event_value(item) for item in value]
+    if isinstance(value, str):
+        text = value
+        for pattern in _EVENT_SENSITIVE_TEXT_RE:
+            if pattern.pattern.startswith("\\bBearer"):
+                text = pattern.sub("Bearer [REDACTED]", text)
+            else:
+                text = pattern.sub(r"\1[REDACTED]", text)
+        return text[:_MAX_EVENT_VALUE_LENGTH]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return str(value)[:_MAX_EVENT_VALUE_LENGTH]
+
+
+def _redact_event_payload(payload: Any) -> Dict[str, Any]:
+    value = payload if isinstance(payload, dict) else {"value": payload}
+    return _redact_event_value(value)
 
 
 def extract_agent_from_session_id(session_id: str) -> str:
@@ -154,6 +196,126 @@ class SessionManager:
         """
         return self.get_session(session_id)
 
+    def _session_db_path(self, session_id: str) -> Path:
+        self._validate_session_id(session_id)
+        sessions_dir = Path(self.session_dir).resolve()
+        db_path = (sessions_dir / f"{session_id}.db").resolve()
+        db_path.relative_to(sessions_dir)
+        return db_path
+
+    @staticmethod
+    def _ensure_session_events_table(conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS session_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT NOT NULL UNIQUE,
+                session_id TEXT NOT NULL,
+                sequence INTEGER NOT NULL UNIQUE,
+                event_type TEXT NOT NULL,
+                role TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                redacted INTEGER NOT NULL DEFAULT 1
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_session_events_created_at "
+            "ON session_events(created_at, id)"
+        )
+
+    def append_session_event(
+        self,
+        session_id: str,
+        event_type: str,
+        payload: Any,
+        *,
+        role: str = "assistant",
+        event_id: Optional[str] = None,
+        created_at: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Persist one redacted runtime event in the scoped session database."""
+        self._validate_session_id(session_id)
+        if not event_type:
+            raise ValueError("event_type is required")
+        if role not in {"user", "assistant", "system", "tool"}:
+            raise ValueError("unsupported event role")
+        event_id = event_id or uuid.uuid4().hex
+        created_at = created_at or datetime.now().isoformat()
+        safe_payload = _redact_event_payload(payload)
+        encoded_payload = json.dumps(safe_payload, ensure_ascii=False, separators=(",", ":"))
+
+        self.get_session(session_id)
+        db_path = self._session_db_path(session_id)
+        with closing(sqlite3.connect(str(db_path), timeout=5.0)) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._ensure_session_events_table(conn)
+            existing = conn.execute(
+                "SELECT event_id, session_id, sequence, event_type, role, payload, created_at, redacted "
+                "FROM session_events WHERE event_id = ?",
+                (event_id,),
+            ).fetchone()
+            if existing is not None:
+                return self._event_row_to_dict(existing)
+            sequence = int(conn.execute("SELECT COALESCE(MAX(sequence), 0) + 1 FROM session_events").fetchone()[0])
+            conn.execute(
+                "INSERT INTO session_events "
+                "(event_id, session_id, sequence, event_type, role, payload, created_at, redacted) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+                (event_id, session_id, sequence, event_type, role, encoded_payload, created_at),
+            )
+            return {
+                "event_id": event_id,
+                "session_id": session_id,
+                "sequence": sequence,
+                "event_type": event_type,
+                "role": role,
+                "payload": safe_payload,
+                "created_at": created_at,
+                "redacted": True,
+            }
+
+    @staticmethod
+    def _event_row_to_dict(row: tuple) -> Dict[str, Any]:
+        try:
+            payload = json.loads(row[5])
+        except (TypeError, json.JSONDecodeError):
+            payload = {"value": "[INVALID_PAYLOAD]"}
+        return {
+            "event_id": row[0],
+            "session_id": row[1],
+            "sequence": int(row[2]),
+            "event_type": row[3],
+            "role": row[4],
+            "payload": payload,
+            "created_at": row[6],
+            "redacted": bool(row[7]),
+        }
+
+    def get_session_events(self, session_id: str) -> List[Dict[str, Any]]:
+        """Return ordered runtime events from this manager's user scope."""
+        self._validate_session_id(session_id)
+        db_path = self._session_db_path(session_id)
+        if not db_path.exists():
+            return []
+        with closing(sqlite3.connect(str(db_path), timeout=5.0)) as conn:
+            self._ensure_session_events_table(conn)
+            rows = conn.execute(
+                "SELECT event_id, session_id, sequence, event_type, role, payload, created_at, redacted "
+                "FROM session_events ORDER BY sequence, id"
+            ).fetchall()
+        return [self._event_row_to_dict(row) for row in rows]
+
+    def delete_session_events(self, session_id: str) -> None:
+        """Remove runtime events when a session is explicitly cleared."""
+        db_path = self._session_db_path(session_id)
+        if not db_path.exists():
+            return
+        with closing(sqlite3.connect(str(db_path), timeout=5.0)) as conn, conn:
+            self._ensure_session_events_table(conn)
+            conn.execute("DELETE FROM session_events")
+
     def clear_session(self, session_id: str) -> None:
         """
         Clear all conversation history for a session.
@@ -165,6 +327,7 @@ class SessionManager:
         session = self.get_session(session_id) if self.session_exists(session_id) else self._sessions.get(session_id)
         if session:
             run_async(session.clear_session())
+            self.delete_session_events(session_id)
             logger.debug(f"Cleared session: {session_id}")
         else:
             logger.warning(f"Attempted to clear non-existent session: {session_id}")
@@ -178,7 +341,9 @@ class SessionManager:
         """
         self._validate_session_id(session_id)
         # Remove from in-memory cache if present
-        self._sessions.pop(session_id, None)
+        session = self._sessions.pop(session_id, None)
+        if session is not None:
+            session.close()
 
         # Delete the database file and SQLite WAL/SHM files if they exist on disk
         db_path = os.path.join(self.session_dir, f"{session_id}.db")
@@ -221,7 +386,7 @@ class SessionManager:
         # references remain valid in the new DB; AdvancedSQLiteSession.get_items()
         # relies on a JOIN between agent_messages and message_structure, so copying
         # agent_messages alone would result in an empty conversation history.
-        with sqlite3.connect(source_db_path, timeout=5.0) as src_conn:
+        with closing(sqlite3.connect(source_db_path, timeout=5.0)) as src_conn, src_conn:
             cursor = src_conn.cursor()
             cursor.execute(
                 "SELECT id, message_data, created_at FROM agent_messages WHERE session_id = ? ORDER BY id",
@@ -261,7 +426,7 @@ class SessionManager:
         new_db_path = os.path.join(self.session_dir, f"{new_session_id}.db")
         AdvancedSQLiteSession(session_id=new_session_id, db_path=new_db_path, create_tables=True)
 
-        with sqlite3.connect(new_db_path, timeout=5.0) as new_conn:
+        with closing(sqlite3.connect(new_db_path, timeout=5.0)) as new_conn, new_conn:
             new_conn.execute(
                 "INSERT OR IGNORE INTO agent_sessions (session_id) VALUES (?)",
                 (new_session_id,),
@@ -335,7 +500,7 @@ class SessionManager:
             raise FileNotFoundError(f"Source session database not found: {source_session_id}")
 
         # Read source messages ordered by creation time
-        with sqlite3.connect(source_db_path, timeout=5.0) as src_conn:
+        with closing(sqlite3.connect(source_db_path, timeout=5.0)) as src_conn, src_conn:
             cursor = src_conn.cursor()
             cursor.execute(
                 "SELECT id, session_id, message_data, created_at FROM agent_messages "
@@ -393,7 +558,7 @@ class SessionManager:
         # (which JOINs agent_messages with message_structure) returns the rewound history.
         turn_usage_rows: list = []
         structure_rows: list = []
-        with sqlite3.connect(source_db_path, timeout=5.0) as src_conn:
+        with closing(sqlite3.connect(source_db_path, timeout=5.0)) as src_conn, src_conn:
             cursor = src_conn.cursor()
             try:
                 cursor.execute(
@@ -421,7 +586,7 @@ class SessionManager:
 
         # Insert session record, messages, message_structure, and turn_usage into the new DB.
         # Preserve agent_messages.id so message_structure.message_id references remain valid.
-        with sqlite3.connect(new_db_path, timeout=5.0) as new_conn:
+        with closing(sqlite3.connect(new_db_path, timeout=5.0)) as new_conn, new_conn:
             new_conn.execute(
                 "INSERT OR IGNORE INTO agent_sessions (session_id) VALUES (?)",
                 (new_session_id,),
@@ -539,7 +704,7 @@ class SessionManager:
 
         # Check if the session has actual data (messages or session record)
         try:
-            with sqlite3.connect(db_path, timeout=5.0) as conn:
+            with closing(sqlite3.connect(db_path, timeout=5.0)) as conn, conn:
                 cursor = conn.cursor()
 
                 # Check if session has any messages
@@ -596,7 +761,7 @@ class SessionManager:
 
         # Get all session data from database in efficient queries
         try:
-            with sqlite3.connect(db_path, timeout=5.0) as conn:
+            with closing(sqlite3.connect(db_path, timeout=5.0)) as conn, conn:
                 cursor = conn.cursor()
 
                 # Get session metadata
@@ -738,7 +903,7 @@ class SessionManager:
         turns: List[Dict[str, Any]] = []
 
         try:
-            with sqlite3.connect(db_path, timeout=5.0) as conn:
+            with closing(sqlite3.connect(db_path, timeout=5.0)) as conn, conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "SELECT user_turn_number, requests, input_tokens, output_tokens, "
@@ -870,7 +1035,7 @@ class SessionManager:
             return messages
 
         try:
-            with sqlite3.connect(str(db_path)) as conn:
+            with closing(sqlite3.connect(str(db_path))) as conn, conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
@@ -1079,7 +1244,5 @@ class SessionManager:
     def close_all_sessions(self) -> None:
         """Close all active sessions."""
         for session_id in list(self._sessions.keys()):
-            self._sessions.pop(session_id)
-            # SQLiteSession doesn't have an explicit close method,
-            # but removing it from our dict should handle cleanup
+            self._sessions.pop(session_id).close()
             logger.debug(f"Closed session: {session_id}")

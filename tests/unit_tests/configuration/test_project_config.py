@@ -122,7 +122,7 @@ class TestSaveProjectOverride:
         written = save_project_override(override, cwd=str(tmp_path))
         assert written == tmp_path / PROJECT_CONFIG_REL
         assert written.exists()
-        assert written.parent.name == ".datus"
+        assert written.parent.name == ".dataengineer"
 
     def test_none_fields_are_omitted(self, tmp_path):
         override = ProjectOverride(target="x")  # default_datasource & project_name left as None
@@ -158,7 +158,18 @@ class TestSaveProjectOverride:
 
 class TestAllowedKeys:
     def test_whitelist_contains_expected_keys(self):
-        assert ALLOWED_KEYS == frozenset({"target", "default_datasource", "project_name", "language"})
+        assert ALLOWED_KEYS == frozenset(
+            {
+                "target",
+                "default_datasource",
+                "project_name",
+                "language",
+                "pi_provider",
+                "pi_model",
+                "pi_base_url",
+                "pi_thinking",
+            }
+        )
 
 
 class TestProjectOverrideDataclass:
@@ -172,6 +183,10 @@ class TestProjectOverrideDataclass:
             ("default_datasource", "y"),
             ("project_name", "z"),
             ("language", "zh"),
+            ("pi_provider", "deepseek"),
+            ("pi_model", "deepseek-flash"),
+            ("pi_base_url", "https://api.deepseek.com"),
+            ("pi_thinking", "low"),
         ],
     )
     def test_is_not_empty_when_any_set(self, field, value):

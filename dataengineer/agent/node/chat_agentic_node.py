@@ -180,7 +180,11 @@ class ChatAgenticNode(AgenticNode):
     def _setup_skill_tools(self):
         """Setup skill discovery and loading tools with permission control."""
         try:
-            from dataengineer.tools.permission.permission_config import PermissionConfig, PermissionLevel, PermissionRule
+            from dataengineer.tools.permission.permission_config import (
+                PermissionConfig,
+                PermissionLevel,
+                PermissionRule,
+            )
 
             base_config = self.agent_config.permissions_config
             if base_config is not None:

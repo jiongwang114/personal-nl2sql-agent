@@ -1,5 +1,6 @@
 import argparse
 import os
+import sqlite3
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -139,6 +140,37 @@ def sample_database_data():
 
 
 def load_acceptance_config(datasource: str = "snowflake", home: str = "") -> AgentConfig:
-    return load_agent_config(
+    _ensure_acceptance_databases()
+    config = load_agent_config(
         config=str(TEST_CONF_DIR / "agent.yml"), datasource=datasource, home=home, reload=True, force=True, yes=True
     )
+    test_root = os.environ.get("DATAENGINEER_TEST_ROOT")
+    if test_root:
+        root = Path(test_root).as_posix().rstrip("/")
+        for db_config in config.services.datasources.values():
+            prefix = f"{db_config.type}:///"
+            if db_config.type in {"sqlite", "duckdb"} and db_config.uri.startswith(prefix):
+                relative_path = db_config.uri.removeprefix(prefix)
+                if not Path(relative_path).is_absolute():
+                    db_config.uri = f"{prefix}{root}/{relative_path}"
+    return config
+
+
+def _ensure_acceptance_databases() -> None:
+    """Create the small deterministic SQLite fixtures omitted from distributions."""
+    fixtures = {
+        TEST_DATA_DIR / "SSB.db": ("date", "supplier", "customer", "part", "lineorder"),
+        TEST_DATA_DIR / "card_games.sqlite": (
+            "cards",
+            "legalities",
+            "set_translations",
+            "foreign_data",
+            "rulings",
+            "sets",
+        ),
+    }
+    for path, tables in fixtures.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(path) as connection:
+            for table in tables:
+                connection.execute(f'CREATE TABLE IF NOT EXISTS "{table}" (id INTEGER PRIMARY KEY, name TEXT)')

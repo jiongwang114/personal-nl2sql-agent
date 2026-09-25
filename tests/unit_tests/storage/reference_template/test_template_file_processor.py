@@ -206,6 +206,7 @@ class TestParseTemplateBlocks:
                 assert len(blocks) == 1
                 assert "{{start_date}}" in blocks[0][1]
             finally:
+                f.close()
                 os.unlink(f.name)
 
     def test_multi_template_file_with_semicolons(self):
@@ -221,6 +222,7 @@ class TestParseTemplateBlocks:
                 assert "{{start_date}}" in blocks[0][1]
                 assert "{{region}}" in blocks[1][1]
             finally:
+                f.close()
                 os.unlink(f.name)
 
     def test_template_with_jinja_block(self):
@@ -233,6 +235,7 @@ class TestParseTemplateBlocks:
                 assert len(blocks) == 1
                 assert "{% if has_filter %}" in blocks[0][1]
             finally:
+                f.close()
                 os.unlink(f.name)
 
     def test_empty_file(self):
@@ -243,6 +246,7 @@ class TestParseTemplateBlocks:
                 blocks = parse_template_blocks(f.name)
                 assert len(blocks) == 0
             finally:
+                f.close()
                 os.unlink(f.name)
 
     def test_semicolon_inside_jinja_block(self):
@@ -256,6 +260,7 @@ class TestParseTemplateBlocks:
                 # The semicolon is inside a for block, so it should be one template
                 assert len(blocks) == 1
             finally:
+                f.close()
                 os.unlink(f.name)
 
     def test_trailing_semicolon_stripped(self):
@@ -268,6 +273,7 @@ class TestParseTemplateBlocks:
                 assert len(blocks) == 1
                 assert not blocks[0][1].endswith(";")
             finally:
+                f.close()
                 os.unlink(f.name)
 
     def test_gbk_encoding(self):
@@ -281,6 +287,7 @@ class TestParseTemplateBlocks:
                 assert len(blocks) == 1
                 assert "测试" in blocks[0][1]
             finally:
+                f.close()
                 os.unlink(f.name)
 
 
@@ -374,6 +381,7 @@ class TestProcessTemplateFiles:
                 valid, invalid = process_template_files(f.name)
                 assert len(valid) == 1
             finally:
+                f.close()
                 os.unlink(f.name)
 
     def test_no_template_files_raises(self):
@@ -394,6 +402,7 @@ class TestProcessTemplateFiles:
                 with pytest.raises(DataEngineerException):
                     process_template_files(f.name)
             finally:
+                f.close()
                 os.unlink(f.name)
 
     @patch("dataengineer.storage.reference_template.template_file_processor.log_invalid_entries")

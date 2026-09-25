@@ -220,7 +220,13 @@ class ChatTaskManager:
             provider, _, model_id = request.model.partition("/")
             if not model_id:
                 raise ValueError(f"Invalid model format '{request.model}': expected 'provider/model_id'")
-            if provider == "custom":
+            custom_provider = (agent_config.provider_catalog.get("providers") or {}).get(provider, {})
+            provider_models = custom_provider.get("models", []) if isinstance(custom_provider, dict) else []
+            if provider == "custom" and model_id in agent_config.models:
+                agent_config.set_active_custom(model_id, persist=False)
+            elif provider == "custom" and model_id in provider_models:
+                agent_config.set_active_provider_model(provider, model_id, persist=False)
+            elif provider == "custom":
                 agent_config.set_active_custom(model_id, persist=False)
             else:
                 agent_config.set_active_provider_model(provider, model_id, persist=False)

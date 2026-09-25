@@ -1,5 +1,7 @@
 # Pi Web Runtime 与基准测试设计
 
+> Historical design record. Legacy references below are retained for traceability and are not a current runtime option.
+
 ## 状态
 
 - 已于 2026-09-16 在对话中确认设计。

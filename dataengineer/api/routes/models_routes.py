@@ -1,9 +1,7 @@
-"""API routes for the resolved LLM model catalog.
+"""API routes for configured, credentialed LLM models.
 
-Surfaces the OpenRouter-derived model list, filtered down to the providers
-whose credentials are actually configured in ``agent.yml``. The response
-includes ``context_length`` and ``pricing`` so UIs can drive billing and
-context-budget decisions without re-hitting OpenRouter.
+The provider catalog is the model allowlist. OpenRouter cache entries only
+enrich configured models with names, context lengths, and pricing.
 """
 
 from __future__ import annotations
@@ -93,12 +91,7 @@ def _build_model_info(
     description="Return models for providers with credentials configured in agent.yml.",
 )
 async def list_models(svc: ServiceDep) -> Result[ModelsData]:
-    """Return every model exposed by providers the current project has credentials for.
-
-    Data priority per-model:
-      1. OpenRouter cache (``~/.dataengineer/cache/openrouter_models.json``) — richest.
-      2. ``providers.yml`` model list with ``model_specs`` for context_length.
-    """
+    """Return configured provider models, enriched with matching cache metadata."""
     agent_config = svc.agent_config
     catalog = agent_config.provider_catalog if isinstance(agent_config.provider_catalog, dict) else {}
     providers_meta = catalog.get("providers", {}) if isinstance(catalog, dict) else {}
@@ -117,16 +110,21 @@ async def list_models(svc: ServiceDep) -> Result[ModelsData]:
         if not agent_config.provider_available(provider_key):
             continue
 
-        entries = cached_details.get(provider_key)
-        provider_used_cache = bool(entries)
-        if not entries:
-            slugs = meta.get("models")
-            if not isinstance(slugs, list):
-                continue
-            entries = [{"id": slug} for slug in slugs if isinstance(slug, str) and slug]
-
-        if not entries:
+        slugs = meta.get("models")
+        if not isinstance(slugs, list):
             continue
+        configured_slugs = list(dict.fromkeys(slug for slug in slugs if isinstance(slug, str) and slug))
+        if not configured_slugs:
+            continue
+
+        cached_entries = cached_details.get(provider_key) or []
+        cached_by_id = {
+            entry.get("id"): entry
+            for entry in cached_entries
+            if isinstance(entry, dict) and isinstance(entry.get("id"), str)
+        }
+        provider_used_cache = any(slug in cached_by_id for slug in configured_slugs)
+        entries = [cached_by_id.get(slug, {"id": slug}) for slug in configured_slugs]
 
         seen_providers.append(provider_key)
         used_cache = used_cache or provider_used_cache
@@ -140,8 +138,11 @@ async def list_models(svc: ServiceDep) -> Result[ModelsData]:
 
     custom_models = getattr(agent_config, "models", None)
     if isinstance(custom_models, dict) and custom_models:
+        existing_custom_ids = {model.id for model in models if model.provider == "custom"}
         for model_key, model_cfg in custom_models.items():
             if not isinstance(model_key, str) or not model_key:
+                continue
+            if model_key in existing_custom_ids:
                 continue
             actual_model = getattr(model_cfg, "model", None)
             if not isinstance(actual_model, str) or not actual_model:
@@ -166,7 +167,7 @@ async def list_models(svc: ServiceDep) -> Result[ModelsData]:
         success=True,
         data=ModelsData(
             models=models,
-            providers=seen_providers,
+            providers=list(dict.fromkeys(seen_providers)),
             fetched_at=load_cache_fetched_at() if used_cache else None,
             source="cache" if used_cache else "catalog",
         ),

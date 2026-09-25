@@ -417,25 +417,24 @@ class KbService:
         cancel_event: asyncio.Event,
     ):
         """Sync worker for platform doc bootstrap (runs in executor thread)."""
-        from dataengineer.configuration.agent_config import DocumentConfig
-        from dataengineer.storage.document.doc_init import init_platform_docs
-
         config = self.agent_config
-        platform = request.platform
+        from dataengineer.utils.path_manager import reset_path_manager, set_current_path_manager
 
-        # Resolve DocumentConfig: YAML base + API overrides
-        base_cfg = config.document_configs.get(platform, DocumentConfig())
-        merged_cfg = self._merge_doc_overrides(base_cfg, request)
-
-        # Thread-safe emit bridging to async queue
-        def emit(event: BatchEvent) -> None:
-            loop.call_soon_threadsafe(queue.put_nowait, event)
-
-        # Cancel bridge: asyncio.Event -> sync callable
-        def cancel_check() -> bool:
-            return cancel_event.is_set()
-
+        context_token = set_current_path_manager(config.path_manager)
         try:
+            from dataengineer.configuration.agent_config import DocumentConfig
+            from dataengineer.storage.document.doc_init import init_platform_docs
+
+            platform = request.platform
+            base_cfg = config.document_configs.get(platform, DocumentConfig())
+            merged_cfg = self._merge_doc_overrides(base_cfg, request)
+
+            def emit(event: BatchEvent) -> None:
+                loop.call_soon_threadsafe(queue.put_nowait, event)
+
+            def cancel_check() -> bool:
+                return cancel_event.is_set()
+
             return init_platform_docs(
                 platform=platform,
                 cfg=merged_cfg,
@@ -445,6 +444,7 @@ class KbService:
                 cancel_check=cancel_check,
             )
         finally:
+            reset_path_manager(context_token)
             loop.call_soon_threadsafe(queue.put_nowait, _COMPONENT_DONE)
 
     @staticmethod

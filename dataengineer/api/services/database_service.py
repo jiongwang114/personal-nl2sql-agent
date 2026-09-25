@@ -119,6 +119,7 @@ class DatasourceService:
         def _disconnected(db_name: str) -> DatabaseInfo:
             return DatabaseInfo(
                 name=db_name,
+                datasource_id=ds_id,
                 uri=_get_uri(connector),
                 type=dialect,
                 current=(db_name == connector.database_name),
@@ -198,6 +199,7 @@ class DatasourceService:
                         db_infos.append(
                             DatabaseInfo(
                                 name=db_name,
+                                datasource_id=ds_id,
                                 uri=_get_uri(connector),
                                 type=dialect,
                                 current=(db_name == connector.database_name),
@@ -213,6 +215,7 @@ class DatasourceService:
                     db_infos.append(
                         DatabaseInfo(
                             name=db_name,
+                            datasource_id=ds_id,
                             uri=_get_uri(connector),
                             type=dialect,
                             current=(db_name == connector.database_name),
@@ -239,6 +242,7 @@ class DatasourceService:
                 db_infos.append(
                     DatabaseInfo(
                         name=db_name,
+                        datasource_id=ds_id,
                         uri=_get_uri(connector),
                         type=dialect,
                         current=(db_name == connector.database_name),
@@ -302,7 +306,7 @@ class DatasourceService:
                 errorMessage=str(e),
             )
 
-    def get_table_schema(self, full_path: str) -> Result[GetTableDetailData]:
+    def get_table_schema(self, full_path: str, datasource_id: str | None = None) -> Result[GetTableDetailData]:
         """
         Get table schema details.
 
@@ -313,7 +317,14 @@ class DatasourceService:
             GetTableSchemaResult with table schema
         """
         try:
-            if not self.current_db_connector:
+            connector = self.current_db_connector
+            database_name_default = self.current_db_name
+            if datasource_id:
+                try:
+                    database_name_default, connector = self.db_manager.first_conn_with_name(datasource_id)
+                except Exception:
+                    connector = None
+            if not connector:
                 return Result(
                     success=False,
                     errorCode=ErrorCode.PROVIDER_CONFIG_ERROR,
@@ -321,21 +332,21 @@ class DatasourceService:
                 )
 
             # Get table schema
-            name_parts = parse_table_name_parts(full_path, self.current_db_connector.get_type())
+            name_parts = parse_table_name_parts(full_path, connector.get_type())
 
             try:
                 # For StarRocks: catalog.database.table (no schema level)
                 # Use current database if not specified
-                catalog_name = name_parts["catalog_name"] or getattr(self.current_db_connector, "catalog_name", "")
+                catalog_name = name_parts["catalog_name"] or getattr(connector, "catalog_name", "")
                 database_name = (
                     name_parts["database_name"]
-                    or self.current_db_name
-                    or getattr(self.current_db_connector, "database", "")
+                    or database_name_default
+                    or getattr(connector, "database", "")
                 )
-                schema_name = name_parts["schema_name"] or getattr(self.current_db_connector, "schema_name", "")
+                schema_name = name_parts["schema_name"] or getattr(connector, "schema_name", "")
                 table_name = name_parts["table_name"]
 
-                schema_info = self.current_db_connector.get_schema(
+                schema_info = connector.get_schema(
                     catalog_name=catalog_name,
                     database_name=database_name,
                     schema_name=schema_name,

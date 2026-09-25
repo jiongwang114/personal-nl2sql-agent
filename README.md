@@ -67,6 +67,8 @@ C:\Users\<用户名>\.pi\agent\models.json
 
 ### 3. 启动 Web 页面
 
+生产工作台已随 Python 包构建并由 FastAPI 同源托管。直接启动：
+
 ```powershell
 dataengineer --web --datasource demo --host 127.0.0.1 --port 8512
 ```
@@ -76,6 +78,21 @@ dataengineer --web --datasource demo --host 127.0.0.1 --port 8512
 ```text
 http://127.0.0.1:8512
 ```
+
+页面会调用同一地址下的 `/api/v1/*` 接口，不需要额外代理。验证聊天时，先确认 `.env` 中已配置当前运行模式所需的模型凭据，再选择 Database 和 Runtime 后发送问题。浏览器网络面板中的 `POST /api/v1/chat/stream` 应保持 `text/event-stream`，停止按钮会调用 `/api/v1/chat/stop`，断线后的“重试 / 恢复”会调用 `/api/v1/chat/resume`。
+
+前端源码位于 `frontend/`。仅在修改前端时需要 Node.js：
+
+```powershell
+Set-Location frontend
+npm install
+npm run test
+npm run build
+Set-Location ..
+dataengineer --web --datasource demo --host 127.0.0.1 --port 8512
+```
+
+开发模式可先启动上述后端，再运行 `npm run dev` 并访问 `http://127.0.0.1:5173`。Vite 会把 `/api` 代理到 `http://127.0.0.1:8512`。后端不在默认地址时可设置 `VITE_API_BASE_URL`；需要隔离匿名用户会话时可设置只含字母、数字、下划线或连字符的 `VITE_USER_ID`。不要把 API Key 或访问令牌写入 `VITE_*`，它们会出现在浏览器构建产物中。
 
 Web 请求支持三种 `runtime_variant`：
 
@@ -95,8 +112,12 @@ python scripts/run_pi_benchmark.py `
   --output reports/pi-benchmark.jsonl `
   --base-url http://127.0.0.1:8512 `
   --variants legacy,single,multi `
-  --datasource benchmark_demo
+  --datasource benchmark_demo --timeout 180
 ```
+
+评测方法、人工判定和限制见 [真实对照评测记录](docs/benchmark-evidence.md)。本次每种模式仅测试 8 题：Legacy 正确 5/8、Single 正确 3/8、Multi 正确 1/8；中位延迟分别为 12.891 秒、142.258 秒和 109.586 秒。该结果不是总体正确率或隔离负载下的性能结论。
+
+非 nightly 单元测试有 10,678 项通过、15 项条件跳过、1 项预期失败；`dataengineer` 在此范围的行覆盖率为 81.85%。确定性验收测试有 153 项通过、9 个模块条件跳过；该验收范围的覆盖率为 29.25%，不是仓库整体覆盖率。命令、跳过原因和证据边界见 [测试与覆盖率证据](docs/test-evidence.md)。
 
 ## 架构
 

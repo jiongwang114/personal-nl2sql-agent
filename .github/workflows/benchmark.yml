@@ -1,0 +1,84 @@
+name: Real benchmark
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      WLB_API_KEY: ${{ secrets.WLB_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: .pi/package-lock.json
+      - run: uv sync --locked --dev
+      - run: npm ci --prefix .pi --ignore-scripts
+      - name: Configure benchmark model
+        shell: bash
+        run: |
+          test -n "$DEEPSEEK_API_KEY"
+          test -n "$WLB_API_KEY"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path.home() / ".pi" / "agent" / "models.json"
+          path.parent.mkdir(parents=True, exist_ok=True)
+          config = {
+              "providers": {
+                  "custom": {
+                      "baseUrl": "https://codex.wlbclub.com",
+                      "api": "openai-responses",
+                      "apiKey": "$WLB_API_KEY",
+                      "models": [{
+                          "id": "gpt-5.5",
+                          "reasoning": True,
+                          "input": ["text"],
+                          "contextWindow": 256000,
+                          "maxTokens": 16384,
+                          "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+                      }],
+                  }
+              }
+          }
+          path.write_text(json.dumps(config), encoding="utf-8")
+          PY
+      - name: Start API
+        shell: bash
+        run: |
+          mkdir -p reports
+          uv run dataengineer --web --config conf/agent.yml --datasource benchmark_demo --host 127.0.0.1 --port 8512 > reports/server.log 2>&1 &
+          for attempt in {1..60}; do
+            curl --fail --silent http://127.0.0.1:8512/ >/dev/null && exit 0
+            sleep 1
+          done
+          exit 1
+      - name: Run Legacy, Single, and Multi
+        run: >-
+          uv run python scripts/run_pi_benchmark.py
+          --cases benchmark/semantic_layer/testing_set.csv
+          --output reports/benchmark-raw.jsonl
+          --base-url http://127.0.0.1:8512
+          --variants legacy,single,multi
+          --datasource benchmark_demo --timeout 180
+      - name: Summarize completion and latency
+        run: >-
+          uv run python scripts/compare_pi_variants.py reports/benchmark-raw.jsonl
+          --output reports/benchmark-summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-reports
+          path: reports/

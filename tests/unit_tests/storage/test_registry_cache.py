@@ -146,7 +146,7 @@ class TestBackendHolderConfigPropagation:
         """get_vector_backend() passes isolation to vector config; project is NOT injected."""
         from dataengineer.storage.backend_holder import get_vector_backend, init_backends
 
-        with patch("datus.storage.vector.VectorRegistry.create_backend") as mock_create:
+        with patch("dataengineer.storage.vector.VectorRegistry.create_backend") as mock_create:
             mock_create.return_value = MagicMock()
             init_backends(data_dir="/tmp/test")
             get_vector_backend()
@@ -158,7 +158,7 @@ class TestBackendHolderConfigPropagation:
         """_get_rdb_backend() passes isolation to rdb config; project is NOT injected."""
         from dataengineer.storage.backend_holder import _get_rdb_backend, init_backends
 
-        with patch("datus.storage.rdb.RdbRegistry.create_backend") as mock_create:
+        with patch("dataengineer.storage.rdb.RdbRegistry.create_backend") as mock_create:
             mock_create.return_value = MagicMock()
             init_backends(data_dir="/tmp/test")
             _get_rdb_backend()
@@ -170,7 +170,7 @@ class TestBackendHolderConfigPropagation:
         """create_vector_connection(project=...) forwards project to backend.connect()."""
         from dataengineer.storage.backend_holder import create_vector_connection, init_backends
 
-        with patch("datus.storage.vector.VectorRegistry.create_backend") as mock_create:
+        with patch("dataengineer.storage.vector.VectorRegistry.create_backend") as mock_create:
             mock_backend = MagicMock()
             mock_create.return_value = mock_backend
             init_backends(data_dir="/tmp/test")
@@ -181,7 +181,7 @@ class TestBackendHolderConfigPropagation:
         """create_rdb_for_store(store, project) forwards both to backend.connect()."""
         from dataengineer.storage.backend_holder import create_rdb_for_store, init_backends
 
-        with patch("datus.storage.rdb.RdbRegistry.create_backend") as mock_create:
+        with patch("dataengineer.storage.rdb.RdbRegistry.create_backend") as mock_create:
             mock_backend = MagicMock()
             mock_create.return_value = mock_backend
             init_backends(data_dir="/tmp/test")

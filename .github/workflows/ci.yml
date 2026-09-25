@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - run: uv sync --locked --dev
+      - run: uv run ruff check dataengineer scripts tests
+      - name: Acceptance tests and coverage
+        run: >-
+          uv run pytest -m acceptance -q -o log_cli=false --timeout=120
+          --cov=dataengineer --cov-report=term
+          --cov-report=xml:reports/coverage-acceptance.xml
+          --junitxml=reports/junit-acceptance.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: reports/

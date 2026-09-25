@@ -105,25 +105,13 @@ def db_manager(agent_config: AgentConfig) -> DBManager:
 
 
 def test_compress(db_manager: DBManager):
-    sql = """SELECT
-    name,
-    setCode,
-    rarity,
-    type,
-    manaCost,
-    cardKingdomId,
-    cardKingdomFoilId
-FROM cards
-WHERE cardKingdomFoilId IS NOT NULL
-    AND cardKingdomId IS NOT NULL
-ORDER BY
-    CASE rarity
-        WHEN 'mythic' THEN 1
-        WHEN 'rare' THEN 2
-        WHEN 'uncommon' THEN 3
-        ELSE 4
-    END,
-    name;"""
+    sql = """WITH RECURSIVE rows(n) AS (
+        SELECT 1 UNION ALL SELECT n + 1 FROM rows WHERE n < 1000
+    )
+    SELECT n AS user_id, printf('user_%04d', n) AS name,
+           printf('department_%02d', n % 12) AS department,
+           printf('description_%0100d', n) AS description
+    FROM rows"""
     connector: BaseSqlConnector = db_manager.get_conn("card_games", "card_games")
     tool = DBFuncTool(connector)
     result = tool.read_query(sql)

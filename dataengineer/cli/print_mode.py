@@ -17,7 +17,11 @@ from pydantic import ValidationError
 from dataengineer.agent.node.node_factory import create_interactive_node, create_node_input
 from dataengineer.cli.autocomplete import AtReferenceCompleter
 from dataengineer.configuration.agent_config_loader import load_agent_config
-from dataengineer.schemas.action_content_builder import action_to_content, build_interaction_content, build_response_content
+from dataengineer.schemas.action_content_builder import (
+    action_to_content,
+    build_interaction_content,
+    build_response_content,
+)
 from dataengineer.schemas.action_history import ActionHistoryManager, ActionRole, ActionStatus
 from dataengineer.schemas.message_content import MessageContent, MessagePayload
 from dataengineer.utils.async_utils import run_async

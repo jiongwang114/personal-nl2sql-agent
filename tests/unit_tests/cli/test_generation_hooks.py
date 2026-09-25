@@ -241,27 +241,27 @@ class TestResolvePath:
 
     def test_relative_joined_for_semantic(self, broker):
         h, _ = self._make_hooks(broker)
-        assert h._resolve_path("orders.yml", "semantic") == "/ws/semantic_models/orders.yml"
+        assert h._resolve_path("orders.yml", "semantic") == str(Path("/ws/semantic_models/orders.yml"))
 
     def test_relative_joined_for_sql_summary(self, broker):
         h, _ = self._make_hooks(broker)
-        assert h._resolve_path("q_001.yaml", "sql_summary") == "/ws/sql_summaries/q_001.yaml"
+        assert h._resolve_path("q_001.yaml", "sql_summary") == str(Path("/ws/sql_summaries/q_001.yaml"))
 
     def test_relative_joined_for_ext_knowledge(self, broker):
         h, _ = self._make_hooks(broker)
-        assert h._resolve_path("gmv.yaml", "ext_knowledge") == "/ws/ext_knowledge/gmv.yaml"
+        assert h._resolve_path("gmv.yaml", "ext_knowledge") == str(Path("/ws/ext_knowledge/gmv.yaml"))
 
     def test_nested_relative_joined(self, broker):
         h, _ = self._make_hooks(broker)
         assert (
             h._resolve_path("metrics/orders_metrics.yml", "semantic")
-            == "/ws/semantic_models/metrics/orders_metrics.yml"
+            == str(Path("/ws/semantic_models/metrics/orders_metrics.yml"))
         )
 
     def test_already_prefixed_path_passes_through(self, broker):
         """LLM that includes the ``{subdir}/`` prefix must not be double-prefixed."""
         h, _ = self._make_hooks(broker)
-        assert h._resolve_path("semantic_models/orders.yml", "semantic") == "/ws/semantic_models/orders.yml"
+        assert h._resolve_path("semantic_models/orders.yml", "semantic") == str(Path("/ws/semantic_models/orders.yml"))
 
     def test_empty_path_returns_unchanged(self, broker):
         h, _ = self._make_hooks(broker)
@@ -270,7 +270,7 @@ class TestResolvePath:
     def test_unknown_kind_resolves_against_subject_root(self, broker):
         """Unknown kind: normalizer adds no prefix, but path still rooted at subject_dir."""
         h, _ = self._make_hooks(broker)
-        assert h._resolve_path("orders.yml", "unknown") == "/ws/orders.yml"
+        assert h._resolve_path("orders.yml", "unknown") == str(Path("/ws/orders.yml"))
 
     def test_no_agent_config_leaves_relative_unchanged(self, broker):
         h = GenerationHooks(broker=broker, agent_config=None)
@@ -286,7 +286,7 @@ class TestResolvePath:
         h, _ = self._make_hooks(broker)
         # ``metrics/../orders.yml`` → prepend → ``semantic_models/metrics/../orders.yml``
         # → normpath under /ws → ``/ws/semantic_models/orders.yml``
-        assert h._resolve_path("metrics/../orders.yml", "semantic") == "/ws/semantic_models/orders.yml"
+        assert h._resolve_path("metrics/../orders.yml", "semantic") == str(Path("/ws/semantic_models/orders.yml"))
 
     def test_rejects_symlink_that_escapes_subject(self, broker, tmp_path):
         """A symlink inside the KB whose target is outside must be rejected."""
@@ -296,7 +296,12 @@ class TestResolvePath:
         outside = tmp_path / "outside"
         outside.mkdir()
         (outside / "secret.yml").write_text("x")
-        (sub / "leak.yml").symlink_to(outside / "secret.yml")
+        try:
+            (sub / "leak.yml").symlink_to(outside / "secret.yml")
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == 1314:
+                pytest.skip("Windows account lacks symlink creation privilege")
+            raise
 
         h, _ = self._make_hooks(broker, subject=str(subject))
         assert h._resolve_path("leak.yml", "semantic") == ""
@@ -307,7 +312,7 @@ class TestResolvePath:
         # is dropped so downstream processing never sees it.
         result = {"result": {"semantic_model_files": ["orders.yml", "/abs/customers.yml"]}}
         paths = h._extract_filepaths_from_result(result)
-        assert paths == ["/ws/semantic_models/orders.yml"]
+        assert paths == [str(Path("/ws/semantic_models/orders.yml"))]
 
 
 # ---------------------------------------------------------------------------
@@ -1087,7 +1092,7 @@ class TestProcessMetricWithSemanticModel:
             metric_path = mf.name
         try:
             # sem_dir is a directory, open() will raise
-            with pytest.raises(IsADirectoryError):
+            with pytest.raises(PermissionError if os.name == "nt" else IsADirectoryError):
                 await hooks._process_metric_with_semantic_model(str(sem_dir), metric_path)
         finally:
             os.unlink(metric_path)
@@ -1358,7 +1363,7 @@ class TestSyncSemanticToDbMetricOnlyDiagnostic:
         assert result["success"] is False
         assert "no `metric:` YAML blocks" in result["error"]
         assert "create_metric: true" in result["error"]
-        assert str(empty_metric) in result["error"]
+        assert repr(str(empty_metric)) in result["error"]
 
     def test_combined_sync_keeps_generic_error_when_both_missing(self, agent_config, tmp_path):
         """A combined sync (semantic + metrics) with neither still uses the

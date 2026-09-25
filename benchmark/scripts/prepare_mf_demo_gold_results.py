@@ -9,7 +9,7 @@ import duckdb
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATABASE = PROJECT_ROOT / "tests" / "data" / "dataengineer_metricflow_db" / "duck.db"
+DATABASE = PROJECT_ROOT / "sample_data" / "mf-demo.duckdb"
 MANIFEST = PROJECT_ROOT / "benchmark" / "semantic_layer" / "mf_demo_official_v1.json"
 
 

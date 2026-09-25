@@ -8,7 +8,12 @@ from unittest.mock import patch
 
 import pytest
 
-from dataengineer.utils.path_manager import DataEngineerPathManager, get_path_manager, reset_path_manager, set_current_path_manager
+from dataengineer.utils.path_manager import (
+    DataEngineerPathManager,
+    get_path_manager,
+    reset_path_manager,
+    set_current_path_manager,
+)
 
 
 @pytest.fixture(autouse=True)

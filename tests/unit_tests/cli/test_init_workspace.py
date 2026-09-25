@@ -657,7 +657,7 @@ class TestInitWorkspaceRunFullFlow:
             ret = iw.run()
 
         assert ret == 0
-        content = (tmp_path / "AGENTS.md").read_text()
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
         assert "## Architecture" in content
 
     def test_run_probes_database_when_database_arg_set(self, tmp_path):

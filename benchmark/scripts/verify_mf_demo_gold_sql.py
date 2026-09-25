@@ -7,9 +7,10 @@ import duckdb
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATABASE_PATH = PROJECT_ROOT / "tests" / "data" / "dataengineer_metricflow_db" / "duck.db"
+DATABASE_PATH = PROJECT_ROOT / "sample_data" / "mf-demo.duckdb"
 SOURCES = [
     PROJECT_ROOT / "benchmark" / "semantic_layer" / "testing_set.csv",
+    PROJECT_ROOT / "benchmark" / "semantic_layer" / "testing_set_v2.csv",
 ]
 
 

@@ -670,7 +670,7 @@ class ActionRenderer:
             msg = action.messages
             if msg.startswith("User: "):
                 msg = msg[6:]
-            return [Text.from_markup(f"[green bold]Datus> [/green bold]{msg}")]
+            return [Text.from_markup(f"[green bold]DataEngineer> [/green bold]{msg}")]
 
         # TOOL / WORKFLOW / SYSTEM -> generate Rich Text directly
         if action.role == ActionRole.TOOL:
@@ -802,8 +802,8 @@ class ActionRenderer:
     # -- utility renderables ------------------------------------------------
 
     def render_user_header(self, message: str) -> Text:
-        """Render 'Datus> ...' user message header."""
-        return Text.from_markup(f"[green bold]Datus> [/green bold]{message}")
+        """Render the user message header."""
+        return Text.from_markup(f"[green bold]DataEngineer> [/green bold]{message}")
 
     def render_separator(self) -> Text:
         """Render horizontal separator."""

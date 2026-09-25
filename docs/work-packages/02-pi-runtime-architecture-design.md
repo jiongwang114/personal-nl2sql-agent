@@ -1,5 +1,7 @@
 # Pi SQL Agent Runtime Architecture
 
+> Historical architecture/design record. Runtime rollout decisions in this document are superseded by `docs/frontend-next-work-plan.md`; Legacy below describes the former workflow, not a selectable current runtime.
+
 ## 1. Goal
 
 将现有 Data Engineer Agent 的模型循环和顶层 workflow 逐步迁移到 Pi，同时保留已经成熟的 Python 数据领域能力。

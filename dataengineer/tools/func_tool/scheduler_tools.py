@@ -9,6 +9,7 @@ from agents import Tool
 from dataengineer.configuration.agent_config import AgentConfig
 from dataengineer.tools import BaseTool
 from dataengineer.tools.func_tool.base import FuncToolListResult, FuncToolResult, trans_to_function_tool
+from dataengineer.tools.func_tool.fs_path_policy import PathAllowlist, PathZone, classify_path
 from dataengineer.utils.exceptions import DataEngineerException, ErrorCode
 from dataengineer.utils.loggings import get_logger
 
@@ -22,12 +23,55 @@ class SchedulerTools(BaseTool):
     tool_description = "Tools for submitting and managing scheduled jobs via Airflow"
 
     def __init__(self, agent_config: AgentConfig, scheduler_service: Optional[str] = None, **kwargs):
+        strict = kwargs.pop("strict", None)
         super().__init__(**kwargs)
         self.agent_config = agent_config
         self.scheduler_service = scheduler_service
+        self.strict = bool(agent_config.filesystem_strict) if strict is None else strict
+
+    def _load_sql_content(self, sql_file_path: str) -> tuple[Optional[str], Optional[str]]:
+        root = Path(self.agent_config.project_root).expanduser().resolve(strict=False)
+        path = classify_path(sql_file_path, root_path=root, current_node=None)
+        if path.zone == PathZone.HIDDEN:
+            return None, f"SQL file not found: {sql_file_path}"
+        if path.zone == PathZone.EXTERNAL and self.strict:
+            allowlist = self.agent_config.filesystem_allowlist
+            if isinstance(allowlist, dict):
+                allowlist = PathAllowlist.from_dict(allowlist)
+            if not isinstance(allowlist, PathAllowlist) or not allowlist.permits_read(path.resolved):
+                return None, f"SQL path outside workspace is not allowed in strict mode: {root} ({sql_file_path})"
+        if not path.resolved.is_file():
+            return None, f"SQL file not found: {sql_file_path}"
+        try:
+            content = path.resolved.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            return None, f"Failed to read SQL file '{sql_file_path}': {exc}"
+        if not content:
+            return None, f"SQL file is empty: {sql_file_path}"
+        return content, None
 
     def _selected_scheduler_config(self) -> dict:
         return dict(self.agent_config.get_scheduler_config(self.scheduler_service))
+
+    def _resolve_sql_connection(self, conn_id: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+        if conn_id:
+            return conn_id, None
+        connections = self._selected_scheduler_config().get("connections", {})
+        defaults = [
+            name for name, info in connections.items()
+            if isinstance(info, dict) and info.get("default")
+            and "sql" in ([info.get("capabilities")] if isinstance(info.get("capabilities"), str)
+                          else info.get("capabilities", []))
+        ]
+        if len(defaults) > 1:
+            return None, "multiple default SQL connections configured; specify conn_id"
+        if defaults:
+            return defaults[0], None
+        return None, "'conn_id' is required for sql job_type. Set the scheduler connection ID."
+
+    @staticmethod
+    def _deliverable_target(job) -> dict:
+        return {"type": "scheduler_job", "platform": job.platform, "job_id": job.job_id, "job_name": job.job_name}
 
     # ── Adapter factory ────────────────────────────────────────────────────
 
@@ -68,7 +112,7 @@ class SchedulerTools(BaseTool):
         self,
         job_name: str,
         sql_file_path: str,
-        conn_id: str,
+        conn_id: Optional[str] = None,
         schedule: Optional[str] = None,
         description: Optional[str] = None,
     ) -> FuncToolResult:
@@ -93,16 +137,15 @@ class SchedulerTools(BaseTool):
         except ImportError as exc:
             return FuncToolResult(success=0, error=f"datus-scheduler-core not installed: {exc}")
 
-        # Read SQL file
+        sql_content, error = self._load_sql_content(sql_file_path)
+        if error:
+            return FuncToolResult(success=0, error=error)
         try:
-            sql_path = Path(sql_file_path).expanduser()
-            if not sql_path.exists():
-                return FuncToolResult(success=0, error=f"SQL file not found: {sql_file_path}")
-            sql_content = sql_path.read_text(encoding="utf-8").strip()
-            if not sql_content:
-                return FuncToolResult(success=0, error=f"SQL file is empty: {sql_file_path}")
-        except Exception as exc:
-            return FuncToolResult(success=0, error=f"Failed to read SQL file '{sql_file_path}': {exc}")
+            conn_id, error = self._resolve_sql_connection(conn_id)
+        except DataEngineerException as exc:
+            return FuncToolResult(success=0, error=str(exc))
+        if error:
+            return FuncToolResult(success=0, error=error)
 
         # Submit
         try:
@@ -127,6 +170,8 @@ class SchedulerTools(BaseTool):
                     "status": job.status.value,
                     "scheduler": job.platform,
                     "platform": job.platform,
+                    "conn_id": conn_id,
+                    "deliverable_target": self._deliverable_target(job),
                 },
             )
         except Exception as exc:
@@ -166,15 +211,9 @@ class SchedulerTools(BaseTool):
         except ImportError as exc:
             return FuncToolResult(success=0, error=f"datus-scheduler-core not installed: {exc}")
 
-        try:
-            sql_path = Path(sql_file_path).expanduser()
-            if not sql_path.exists():
-                return FuncToolResult(success=0, error=f"SQL file not found: {sql_file_path}")
-            sql_content = sql_path.read_text(encoding="utf-8").strip()
-            if not sql_content:
-                return FuncToolResult(success=0, error=f"SQL file is empty: {sql_file_path}")
-        except Exception as exc:
-            return FuncToolResult(success=0, error=f"Failed to read SQL file '{sql_file_path}': {exc}")
+        sql_content, error = self._load_sql_content(sql_file_path)
+        if error:
+            return FuncToolResult(success=0, error=error)
 
         try:
             adapter = self._get_adapter()
@@ -201,6 +240,7 @@ class SchedulerTools(BaseTool):
                     "status": job.status.value,
                     "scheduler": job.platform,
                     "platform": job.platform,
+                    "deliverable_target": self._deliverable_target(job),
                 },
             )
         except Exception as exc:
@@ -442,7 +482,15 @@ class SchedulerTools(BaseTool):
 
         try:
             adapter.delete_job(job_id)
-            return FuncToolResult(success=1, result={"job_id": job_id, "status": "deleted"})
+            remaining = adapter.get_job(job_id)
+            if remaining is None:
+                return FuncToolResult(success=1, result={"job_id": job_id, "status": "deleted"})
+            if getattr(remaining, "extra", {}).get("is_active") is False:
+                return FuncToolResult(
+                    success=1,
+                    result={"job_id": job_id, "status": "deleted_inactive", "metadata_cleanup": "pending"},
+                )
+            return FuncToolResult(success=0, error=f"Job {job_id} still exists after deletion")
         except Exception as exc:
             logger.error("delete_job failed: %s", exc)
             return FuncToolResult(success=0, error=str(exc))
@@ -492,24 +540,18 @@ class SchedulerTools(BaseTool):
         except ImportError as exc:
             return FuncToolResult(success=0, error=f"datus-scheduler-core not installed: {exc}")
 
-        # Read SQL file
-        try:
-            sql_path = Path(sql_file_path).expanduser()
-            if not sql_path.exists():
-                return FuncToolResult(success=0, error=f"SQL file not found: {sql_file_path}")
-            sql_content = sql_path.read_text(encoding="utf-8").strip()
-            if not sql_content:
-                return FuncToolResult(success=0, error=f"SQL file is empty: {sql_file_path}")
-        except Exception as exc:
-            return FuncToolResult(success=0, error=f"Failed to read SQL file '{sql_file_path}': {exc}")
+        sql_content, error = self._load_sql_content(sql_file_path)
+        if error:
+            return FuncToolResult(success=0, error=error)
 
         # Validate conn_id for sql jobs
-        if job_type == "sql" and not conn_id:
-            return FuncToolResult(
-                success=0,
-                error="'conn_id' is required for sql job_type. "
-                "Set it to the Airflow Connection ID for the target database.",
-            )
+        if job_type == "sql":
+            try:
+                conn_id, error = self._resolve_sql_connection(conn_id)
+            except DataEngineerException as exc:
+                return FuncToolResult(success=0, error=str(exc))
+            if error:
+                return FuncToolResult(success=0, error=error)
 
         try:
             adapter = self._get_adapter()
@@ -545,6 +587,8 @@ class SchedulerTools(BaseTool):
                     "status": job.status.value,
                     "scheduler": job.platform,
                     "platform": job.platform,
+                    "conn_id": conn_id if job_type == "sql" else None,
+                    "deliverable_target": self._deliverable_target(job),
                 },
             )
         except Exception as exc:
@@ -662,7 +706,10 @@ class SchedulerTools(BaseTool):
                     "Check Airflow (Admin > Connections) for available connections.",
                 },
             )
-        conn_list = [{"conn_id": k, "description": v} for k, v in connections.items()]
+        conn_list = [
+            {"conn_id": name, **(info if isinstance(info, dict) else {"description": info})}
+            for name, info in connections.items()
+        ]
         return FuncToolResult(
             success=1,
             result={

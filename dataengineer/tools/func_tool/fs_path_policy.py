@@ -53,6 +53,24 @@ class ResolvedPath:
     display: str
 
 
+@dataclass(frozen=True)
+class PathAllowlist:
+    """Explicit external roots available for filesystem reads or writes."""
+
+    allow_read: tuple[Path, ...] = ()
+    allow_write: tuple[Path, ...] = ()
+
+    @classmethod
+    def from_dict(cls, value: dict) -> "PathAllowlist":
+        return cls(
+            allow_read=tuple(Path(p).expanduser().resolve(strict=False) for p in value.get("allow_read", ())),
+            allow_write=tuple(Path(p).expanduser().resolve(strict=False) for p in value.get("allow_write", ())),
+        )
+
+    def permits_read(self, path: Path) -> bool:
+        return any(_is_relative_to(path, root) for root in (*self.allow_read, *self.allow_write))
+
+
 def _is_relative_to(candidate: Path, anchor: Path) -> bool:
     """Python 3.12 has ``Path.is_relative_to`` but guarded with a try/except for
     non-Path comparisons. Kept as a small helper for readability and so tests
@@ -118,16 +136,14 @@ def classify_path(
     # anchor so a project that happens to live under ``~/.dataengineer`` still
     # classifies ``{project_root}/.dataengineer/skills/x`` as the project's own skill
     # rather than the global one. See Decision Order step 4 in the plan.
-    project_dot_dataengineer = (root_resolved / ".datus").resolve(strict=False)
-    project_skills = (project_dot_dataengineer / "skills").resolve(strict=False)
-    project_memory_node: Optional[Path] = None
-    if current_node:
-        project_memory_node = (project_dot_dataengineer / "memory" / current_node).resolve(strict=False)
+    project_private_dirs = [(root_resolved / name).resolve(strict=False) for name in (".datus", ".dataengineer")]
     global_skills = (home_resolved / "skills").resolve(strict=False)
 
-    whitelist_anchors = [project_skills]
-    if project_memory_node is not None:
-        whitelist_anchors.append(project_memory_node)
+    whitelist_anchors = []
+    for private_dir in project_private_dirs:
+        whitelist_anchors.append((private_dir / "skills").resolve(strict=False))
+        if current_node:
+            whitelist_anchors.append((private_dir / "memory" / current_node).resolve(strict=False))
     whitelist_anchors.append(global_skills)
 
     zone: PathZone
@@ -149,7 +165,7 @@ def classify_path(
             display = "~/.dataengineer/" + resolved.relative_to(home_resolved).as_posix()
         else:
             display = str(resolved)
-    elif _is_relative_to(resolved, project_dot_dataengineer):
+    elif any(_is_relative_to(resolved, private_dir) for private_dir in project_private_dirs):
         zone = PathZone.HIDDEN
         if _is_relative_to(resolved, root_resolved):
             display = resolved.relative_to(root_resolved).as_posix()
@@ -180,10 +196,12 @@ def whitelist_anchors(
     """
     root_resolved = Path(root_path).expanduser().resolve(strict=False)
     home_resolved = _resolve_home(datus_home)
-    project_dot_dataengineer = (root_resolved / ".datus").resolve(strict=False)
-    anchors = [(project_dot_dataengineer / "skills").resolve(strict=False)]
-    if current_node:
-        anchors.append((project_dot_dataengineer / "memory" / current_node).resolve(strict=False))
+    anchors = []
+    for name in (".datus", ".dataengineer"):
+        private_dir = (root_resolved / name).resolve(strict=False)
+        anchors.append((private_dir / "skills").resolve(strict=False))
+        if current_node:
+            anchors.append((private_dir / "memory" / current_node).resolve(strict=False))
     anchors.append((home_resolved / "skills").resolve(strict=False))
     return anchors
 
@@ -212,8 +230,8 @@ def build_walk_patterns(
         ``root_path`` (no leading ``/``).
     """
     del root_path  # reserved for future use; keeps API stable.
-    excludes = [".datus", ".dataengineer/**"]
-    re_includes = [".dataengineer/skills/**"]
+    excludes = [pattern for name in (".datus", ".dataengineer") for pattern in (name, f"{name}/**")]
+    re_includes = [f"{name}/skills/**" for name in (".datus", ".dataengineer")]
     if current_node:
-        re_includes.append(f".dataengineer/memory/{current_node}/**")
+        re_includes.extend(f"{name}/memory/{current_node}/**" for name in (".datus", ".dataengineer"))
     return excludes, re_includes

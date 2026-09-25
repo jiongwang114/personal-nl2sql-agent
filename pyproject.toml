@@ -54,6 +54,7 @@ dependencies = [
     "mcp>=1.11.0",
     "anyio>=4.9.0",
     "json-repair>=0.47.6",
+    "keyring>=25.5,<26",
     "fastapi>=0.104.0,<1.0",
     "uvicorn>=0.24.0",
     "pyperclip==1.9.0",
@@ -93,7 +94,7 @@ exclude = ["benchmark*", "docs*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yml", "*.yaml", "*.json", "*.md", "*.txt", "*.j2"]
-"dataengineer" = ["*.yml", "*.yaml", "*.json", "*.md", "*.txt"]
+"dataengineer" = ["*.yml", "*.yaml", "*.json", "*.md", "*.txt", "cli/web/static/*.html", "cli/web/static/assets/*"]
 "dataengineer.prompts" = ["*.txt", "*.md", "*.j2"]
 "dataengineer.prompts.prompt_templates" = ["*.j2"]
 

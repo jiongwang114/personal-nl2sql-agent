@@ -102,17 +102,27 @@ class CLIService:
     def _execute_sql_sync(self, request: ExecuteSQLInput, task_id: str) -> Result[ExecuteSQLData]:
         """Synchronous SQL execution logic (runs in a thread)."""
         try:
-            if not self.current_db_connector:
+            connector = self.current_db_connector
+            if request.datasource_id and self.db_manager:
+                try:
+                    _, connector = self.db_manager.first_conn_with_name(request.datasource_id)
+                except Exception:
+                    connector = None
+            if not connector:
                 return Result(
                     success=False,
                     errorCode=ErrorCode.DATABASE_CONNECTION_ERROR,
-                    errorMessage="No database connection available",
+                    errorMessage=(
+                        f"Datasource '{request.datasource_id}' is not configured"
+                        if request.datasource_id
+                        else "No database connection available"
+                    ),
                 )
 
             # Switch to the requested database/catalog context before executing.
             if request.database_name:
-                catalog = getattr(self.current_db_connector, "catalog_name", "") or ""
-                self.current_db_connector.switch_context(
+                catalog = getattr(connector, "catalog_name", "") or ""
+                connector.switch_context(
                     catalog_name=catalog,
                     database_name=request.database_name,
                 )
@@ -134,7 +144,7 @@ class CLIService:
 
             # Execute the query
             start_time = time.time()
-            result = self.current_db_connector.execute(
+            result = connector.execute(
                 input_params={"sql_query": request.sql_query},
                 result_format=request.result_format,
             )
@@ -182,7 +192,16 @@ class CLIService:
                     row_count = result.sql_return.num_rows
                     columns = result.sql_return.column_names
                 else:
-                    sql_return = str(result.sql_return) if result.sql_return else ""
+                    if request.result_format == "json":
+                        import json
+
+                        sql_return = json.dumps(result.sql_return, default=str)
+                        if isinstance(result.sql_return, list) and result.sql_return:
+                            first_row = result.sql_return[0]
+                            if isinstance(first_row, dict):
+                                columns = list(first_row.keys())
+                    else:
+                        sql_return = str(result.sql_return) if result.sql_return else ""
                     row_count = result.row_count
 
                 actions.update_action_by_id(

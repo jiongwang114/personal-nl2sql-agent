@@ -61,7 +61,7 @@ def test_multiprocessing_start_method_embedding_ignores_runtime_error():
             mock_set.assert_called_once_with("fork", force=True)
 
 
-def test_detect_toxicology_db(tmp_path):
+def test_detect_toxicology_db(tmp_path, monkeypatch):
     test_files = [
         "benchmark/bird/dev_20240627/dev_databases/medical/toxicology.sqlite",
         "benchmark/bird/dev_20240627/dev_databases/chemical/untested.sqlite",
@@ -73,6 +73,8 @@ def test_detect_toxicology_db(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
 
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
     pattern = "~/benchmark/bird/dev_20240627/dev_databases/**/*.sqlite"
     # full_pattern = str(tmp_path / pattern)
     results = get_files_from_glob_pattern(pattern, DBType.SQLITE)
@@ -82,4 +84,4 @@ def test_detect_toxicology_db(tmp_path):
     assert len(toxicology_files) == 1, "1 toxicology database should be detected"
 
     assert toxicology_files[0]["name"] == "toxicology"
-    assert toxicology_files[0]["logic_name"] == "toxicology"
+    assert toxicology_files[0]["logic_name"] == "medical"

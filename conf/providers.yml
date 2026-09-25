@@ -6,9 +6,14 @@ providers:
     type: openai
     base_url: https://codex.wlbclub.com/v1
     api_key_env: WLB_API_KEY
-    default_model: gpt-5.5
+    default_model: gpt-6-luna
     models:
-      - gpt-5.5
+      - gpt-6-astra
+      - gpt-6-sol
+      - gpt-6-luna
+      - gpt-5.6-sol
+      - gpt-5.6-terra
+      - gpt-5.6-luna
 
   openai:
     type: openai
@@ -27,10 +32,10 @@ providers:
     type: deepseek
     base_url: https://api.deepseek.com
     api_key_env: DEEPSEEK_API_KEY
-    default_model: deepseek-chat
+    default_model: deepseek-v4-pro
     models:
-      - deepseek-chat
-      - deepseek-reasoner
+      - deepseek-flash
+      - deepseek-v4-pro
 
   claude:
     type: claude
@@ -157,9 +162,6 @@ providers:
 # Model-specific parameter overrides
 # Some models enforce fixed values; these are auto-applied during init.
 model_overrides:
-  gpt-5.5:
-    enable_thinking: true
-
   kimi-k2.5:
     temperature: 1.0
     top_p: 0.95
@@ -187,20 +189,6 @@ model_specs:
   o4:
     context_length: 200000
     max_tokens: 200000
-
-  # DeepSeek Models
-  deepseek-chat:
-    context_length: 65535
-    max_tokens: 8192
-  deepseek-v3:
-    context_length: 65535
-    max_tokens: 8192
-  deepseek-reasoner:
-    context_length: 65535
-    max_tokens: 65535
-  deepseek-r1:
-    context_length: 65535
-    max_tokens: 65535
 
   # Moonshot (Kimi) Models
   kimi-k2:

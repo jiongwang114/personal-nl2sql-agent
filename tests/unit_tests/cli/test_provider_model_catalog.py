@@ -74,8 +74,8 @@ def _local_catalog() -> dict:
                 "type": "deepseek",
                 "base_url": "https://api.deepseek.com",
                 "api_key_env": "DEEPSEEK_API_KEY",
-                "models": ["deepseek-chat"],
-                "default_model": "deepseek-chat",
+                "models": ["deepseek-flash", "deepseek-v4-pro"],
+                "default_model": "deepseek-v4-pro",
             },
             "codex": {
                 "type": "codex",
@@ -575,7 +575,7 @@ class TestResolveProviderModels:
 
         assert merged["providers"]["openai"]["models"] == ["gpt-5.2", "gpt-4o"]
         assert merged["providers"]["claude"]["models"] == ["claude-opus-4-6"]
-        assert merged["providers"]["deepseek"]["models"] == ["deepseek-chat"]
+        assert merged["providers"]["deepseek"]["models"] == ["deepseek-flash", "deepseek-v4-pro"]
         # Cache file was written
         cache_path = fake_datus_home / "cache" / pmc.CACHE_FILE_NAME
         assert cache_path.exists()
@@ -732,7 +732,7 @@ class TestResolveProviderModels:
 
         assert merged["providers"]["openai"]["models"] == ["gpt-5.2"]
         assert merged["providers"]["claude"]["models"] == ["claude-sonnet-4-5"]
-        assert merged["providers"]["deepseek"]["models"] == ["deepseek-chat"]
+        assert merged["providers"]["deepseek"]["models"] == ["deepseek-flash", "deepseek-v4-pro"]
 
     def test_does_not_mutate_input_catalog(self, fake_datus_home: Path) -> None:
         def handler(_req: httpx.Request) -> httpx.Response:

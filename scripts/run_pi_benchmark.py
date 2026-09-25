@@ -27,7 +27,7 @@ def load_cases(path: Path, limit: int = 0) -> list[BenchmarkCase]:
                 if question:
                     cases.append(
                         BenchmarkCase(
-                            task_id=(row.get("task_id") or f"case-{index}").strip(),
+                            task_id=(row.get("task_id") or row.get("case_id") or f"case-{index}").strip(),
                             question=question,
                             expected_sql=(row.get("sql") or row.get("expected_sql") or "").strip(),
                             datasource=(row.get("datasource") or "demo").strip(),
@@ -76,7 +76,7 @@ def parse_sse(text: str) -> dict[str, Any]:
     return {"answer": "\n".join(answer_parts), "error": error, "metrics": metrics}
 
 
-def completed_keys(path: Path) -> set[tuple[str, str]]:
+def completed_keys(path: Path) -> set[tuple[str, str, int]]:
     if not path.exists():
         return set()
     keys = set()
@@ -84,22 +84,23 @@ def completed_keys(path: Path) -> set[tuple[str, str]]:
         for line in handle:
             if line.strip():
                 row = json.loads(line)
-                keys.add((str(row["task_id"]), str(row["variant"])))
+                keys.add((str(row["task_id"]), str(row["variant"]), int(row.get("repeat_index", 1))))
     return keys
 
 
-async def run_case(client: httpx.AsyncClient, base_url: str, case: BenchmarkCase, variant: str) -> dict[str, Any]:
+async def run_case(
+    client: httpx.AsyncClient, base_url: str, case: BenchmarkCase, variant: str, repeat_index: int = 1
+) -> dict[str, Any]:
     started = time.perf_counter()
     response = await client.post(
         f"{base_url.rstrip('/')}/api/v1/chat/stream",
         json={
             "message": case.question,
-            "session_id": f"benchmark_{variant}_{case.task_id}",
+            "session_id": f"benchmark_{variant}_{case.task_id}_r{repeat_index}",
             "source": "benchmark",
             "runtime_variant": variant,
             "database": case.datasource,
         },
-        timeout=None,
     )
     response.raise_for_status()
     parsed = parse_sse(response.text)
@@ -110,6 +111,7 @@ async def run_case(client: httpx.AsyncClient, base_url: str, case: BenchmarkCase
     return {
         "variant": variant,
         "task_id": case.task_id,
+        "repeat_index": repeat_index,
         "question": case.question,
         "expected_sql": case.expected_sql,
         "answer": parsed["answer"],
@@ -126,6 +128,11 @@ async def run_case(client: httpx.AsyncClient, base_url: str, case: BenchmarkCase
 
 
 async def run(args: argparse.Namespace) -> int:
+    timeout = getattr(args, "timeout", 300.0)
+    repeats = getattr(args, "repeats", 1)
+    concurrency = max(1, getattr(args, "concurrency", 1))
+    if repeats < 1:
+        raise ValueError("repeats must be at least 1")
     cases = load_cases(args.cases, args.limit)
     if args.datasource:
         cases = [
@@ -137,35 +144,59 @@ async def run(args: argparse.Namespace) -> int:
             )
             for case in cases
         ]
-    variants = [item.strip() for item in args.variants.split(",") if item.strip()]
-    invalid = set(variants) - {"legacy", "single", "multi"}
+    variants = [item.strip() for item in getattr(args, "variants", "single,multi").split(",") if item.strip()]
+    invalid = set(variants) - {"single", "multi"}
     if invalid:
-        raise ValueError(f"Unknown variants: {', '.join(sorted(invalid))}")
+        raise ValueError(f"Unknown variants (expected single or multi): {', '.join(sorted(invalid))}")
+    if not variants:
+        raise ValueError("At least one runtime variant is required")
     done = completed_keys(args.output) if args.resume else set()
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        write_lock = asyncio.Lock()
+
+        async def one(case: BenchmarkCase, variant: str, repeat_index: int) -> None:
+            if (case.task_id, variant, repeat_index) in done:
+                return
+            try:
+                record = await run_case(client, args.base_url, case, variant, repeat_index)
+            except Exception as exc:
+                record = {
+                    "variant": variant, "task_id": case.task_id, "repeat_index": repeat_index,
+                    "question": case.question, "expected_sql": case.expected_sql, "answer": "",
+                    "error": f"{type(exc).__name__}: {exc}", "result_correct": False,
+                    "needs_human_review": False, "latency_ms": round(timeout * 1000, 2),
+                    "action_count": None, "input_tokens": None, "output_tokens": None,
+                    "token_cost": None, "human_intervention": 0,
+                }
+            async with write_lock:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+                handle.flush()
+                print(f"{case.task_id} {variant} repeat={repeat_index}: {'error' if record['error'] else 'complete'}")
+
         with args.output.open("a", encoding="utf-8") as handle:
-            for case in cases:
-                for variant in variants:
-                    if (case.task_id, variant) in done:
-                        continue
-                    record = await run_case(client, args.base_url, case, variant)
-                    handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-                    handle.flush()
-                    print(f"{case.task_id} {variant}: {'error' if record['error'] else 'complete'}")
+            for repeat_index in range(1, repeats + 1):
+                work = [(case, variant) for case in cases for variant in variants]
+                for start in range(0, len(work), concurrency):
+                    await asyncio.gather(
+                        *(one(case, variant, repeat_index) for case, variant in work[start : start + concurrency])
+                    )
     return 0
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run legacy, single-Agent, and multi-Agent through the Web API")
+    parser = argparse.ArgumentParser(description="Run single-Agent and multi-Agent through the Web API")
     parser.add_argument("--cases", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--base-url", default="http://127.0.0.1:8501")
-    parser.add_argument("--variants", default="legacy,single,multi")
+    parser.add_argument("--variants", default="single,multi", help="Comma-separated runtime variants: single,multi")
     parser.add_argument("--datasource", default="", help="Override the datasource for every benchmark case")
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--repeats", type=int, default=1, help="Number of repetitions per case and variant")
+    parser.add_argument("--concurrency", type=int, default=1, help="Concurrent requests per runner")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--timeout", type=float, default=300.0, help="Per-request timeout in seconds")
     return asyncio.run(run(parser.parse_args()))
 
 

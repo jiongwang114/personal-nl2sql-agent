@@ -21,7 +21,11 @@ from dataengineer.tools.semantic_tools.models import (
     SemanticModelInfo,
     ValidationResult,
 )
-from dataengineer.tools.semantic_tools.registry import AdapterMetadata, SemanticAdapterRegistry, semantic_adapter_registry
+from dataengineer.tools.semantic_tools.registry import (
+    AdapterMetadata,
+    SemanticAdapterRegistry,
+    semantic_adapter_registry,
+)
 from dataengineer.tools.semantic_tools.storage_sync import SemanticStorageManager
 
 # Auto-discover adapters on import

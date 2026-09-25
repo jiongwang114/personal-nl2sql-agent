@@ -1,5 +1,7 @@
 # Pi Web Runtime 与基准测试实施计划
 
+> Historical implementation plan. Its Legacy references describe the former rollout; current API and benchmark scope is Single/Multi per `docs/frontend-next-work-plan.md`.
+
 ## 目标
 
 把已完成的 Pi SQL Runtime 接入现有 Web 聊天 API 和页面，并使用同一路径比较 `legacy`、`single`、`multi`。

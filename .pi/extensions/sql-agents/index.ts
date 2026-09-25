@@ -153,7 +153,7 @@ export default function (pi: ExtensionAPI) {
 	if (process.env.PI_SQL_CHILD === "1") return;
 
 	pi.on("before_agent_start", async (event) => ({
-		systemPrompt: `${event.systemPrompt}\n\nYou are the SQL Orchestrator. Use sql_subagent for role-specific reasoning. You may call only first-level SQL agents. All SQL execution must use execute_readonly_sql, which enforces the deterministic Guard. Repair at most twice. After successful execution, answer in at most two short sentences: give the direct result first, then the essential SQL evidence.`,
+		systemPrompt: `${event.systemPrompt}\n\nYou are the SQL Orchestrator. Use sql_subagent for role-specific reasoning. Start the SQL workflow in state "classified" and call schema-analyst with state "classified" and repair_attempts 0. Never use "init" or "start" as workflow states. Follow these transitions exactly: schema-analyst from classified -> schema_ready; sql-generator from schema_ready -> sql_generated; sql-reviewer from guard_passed -> reviewed; sql-debugger from execution_failed -> sql_repaired; result-interpreter from executed -> interpreted. Pass the returned next_state to the next matching subagent. Do not execute SQL before schema-analyst and sql-generator have returned valid results. Validate and review generated SQL before executing it. All SQL execution must use execute_readonly_sql, which enforces the deterministic Guard. Repair at most twice. After successful execution, answer in at most two short sentences: give the direct result first, then the essential SQL evidence.`,
 	}));
 
 	pi.registerTool({
@@ -162,7 +162,13 @@ export default function (pi: ExtensionAPI) {
 		description: "Run one approved first-level SQL agent with isolated context and a validated state transition.",
 		parameters: Type.Object({
 			agent: Type.String({ description: "schema-analyst, sql-generator, sql-debugger, sql-reviewer, or result-interpreter" }),
-			state: Type.String({ description: "Current SQL workflow state" }),
+			state: Type.Union([
+				Type.Literal("classified"),
+				Type.Literal("schema_ready"),
+				Type.Literal("execution_failed"),
+				Type.Literal("guard_passed"),
+				Type.Literal("executed"),
+			]),
 			repair_attempts: Type.Integer({ minimum: 0, maximum: 2, description: "Repairs already attempted for this request" }),
 			task: Type.String({ description: "Complete task and structured context for the child agent" }),
 		}),
@@ -171,7 +177,9 @@ export default function (pi: ExtensionAPI) {
 			const transition = transitions[params.agent];
 			if (!transition) throw new Error(`Agent is not approved: ${params.agent}`);
 			if (!transition.from.includes(params.state as SqlState)) {
-				throw new Error(`Illegal transition: ${params.agent} cannot run from ${params.state}`);
+				throw new Error(
+					`Illegal transition: ${params.agent} cannot run from ${params.state}; valid state(s): ${transition.from.join(", ")}`,
+				);
 			}
 			if (params.agent === "sql-debugger" && params.repair_attempts >= 2) {
 				throw new Error("SQL repair limit reached: at most two attempts are allowed");

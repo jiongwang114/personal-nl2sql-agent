@@ -15,14 +15,18 @@ pin a handful of values without copying the full config:
   match a key under ``agent.services.datasources``)
 - ``project_name``: shard name for ``~/.dataengineer/sessions/{project_name}/``
   and ``~/.dataengineer/data/{project_name}/`` (optional)
+- ``pi_provider``, ``pi_model``, ``pi_base_url``, and ``pi_thinking``: non-secret
+  defaults for the Pi web runtime; credentials remain in the OS vault.
 
 Any other keys in the file are ignored with a warning so users do not
 mistakenly expect the overlay to accept arbitrary YAML.
 """
 
 import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 from typing import Any, Optional, Union
 
 import yaml
@@ -30,9 +34,12 @@ import yaml
 from dataengineer.utils.loggings import get_logger
 
 logger = get_logger(__name__)
+_PROJECT_CONFIG_LOCK = RLock()
 
 PROJECT_CONFIG_REL = ".dataengineer/config.yml"
-ALLOWED_KEYS = frozenset({"target", "default_datasource", "project_name", "language"})
+ALLOWED_KEYS = frozenset(
+    {"target", "default_datasource", "project_name", "language", "pi_provider", "pi_model", "pi_base_url", "pi_thinking"}
+)
 
 
 @dataclass
@@ -63,6 +70,10 @@ class ProjectOverride:
     default_datasource: Optional[str] = None
     project_name: Optional[str] = None
     language: Optional[str] = None
+    pi_provider: Optional[str] = None
+    pi_model: Optional[str] = None
+    pi_base_url: Optional[str] = None
+    pi_thinking: Optional[str] = None
 
     def is_empty(self) -> bool:
         return (
@@ -70,6 +81,10 @@ class ProjectOverride:
             and self.default_datasource is None
             and self.project_name is None
             and self.language is None
+            and self.pi_provider is None
+            and self.pi_model is None
+            and self.pi_base_url is None
+            and self.pi_thinking is None
         )
 
 
@@ -141,6 +156,10 @@ def load_project_override(cwd: Optional[str] = None) -> Optional[ProjectOverride
         default_datasource=raw.get("default_datasource"),
         project_name=raw.get("project_name"),
         language=raw.get("language"),
+        pi_provider=raw.get("pi_provider"),
+        pi_model=raw.get("pi_model"),
+        pi_base_url=raw.get("pi_base_url"),
+        pi_thinking=raw.get("pi_thinking"),
     )
 
 
@@ -164,7 +183,6 @@ def save_project_override(override: ProjectOverride, cwd: Optional[str] = None) 
     actually set.
     """
     path = project_config_path(cwd)
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         k: v
         for k, v in {
@@ -172,9 +190,29 @@ def save_project_override(override: ProjectOverride, cwd: Optional[str] = None) 
             "default_datasource": override.default_datasource,
             "project_name": override.project_name,
             "language": override.language,
+            "pi_provider": override.pi_provider,
+            "pi_model": override.pi_model,
+            "pi_base_url": override.pi_base_url,
+            "pi_thinking": override.pi_thinking,
         }.items()
         if v is not None
     }
-    with open(path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(payload, f, sort_keys=False, default_flow_style=False)
+    with _PROJECT_CONFIG_LOCK:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                dir=path.parent,
+                delete=False,
+            ) as f:
+                temp_path = Path(f.name)
+                yaml.safe_dump(payload, f, sort_keys=False, default_flow_style=False)
+            os.replace(temp_path, path)
+        finally:
+            if temp_path is not None and temp_path.exists():
+                temp_path.unlink()
     return path

@@ -9,6 +9,7 @@ from dataengineer.api.auth.provider import AuthProvider
 from dataengineer.api.services.dataengineer_service import DataEngineerService
 from dataengineer.api.services.dataengineer_service_cache import DataEngineerServiceCache
 from dataengineer.configuration.agent_config_loader import load_agent_config
+from dataengineer.configuration.project_config import load_project_override
 from dataengineer.utils.loggings import get_logger
 
 logger = get_logger(__name__)
@@ -71,7 +72,13 @@ async def get_dataengineer_service(request: Request) -> DataEngineerService:
         agent_config = ctx.config
         if agent_config is None:
             try:
-                agent_config = load_agent_config(datasource=_datasource)
+                project_override = load_project_override()
+                datasource = (
+                    project_override.default_datasource
+                    if project_override and project_override.default_datasource
+                    else _datasource
+                )
+                agent_config = load_agent_config(datasource=datasource)
             except Exception as e:
                 logger.error(f"Failed to load agent config for datasource '{_datasource}': {e}")
                 raise RuntimeError(f"Failed to load agent config: {e}") from e

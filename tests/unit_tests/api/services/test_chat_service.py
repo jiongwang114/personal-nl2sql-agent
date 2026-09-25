@@ -53,6 +53,27 @@ class TestChatServiceSessionExists:
         assert chat_svc.session_exists("fake-b") is False
 
 
+class TestChatServicePersistPiExchange:
+    @pytest.mark.asyncio
+    async def test_persist_pi_exchange_roundtrips_through_history(self, chat_svc):
+        session_id = "pi_single_history_test"
+
+        await chat_svc.persist_pi_exchange(
+            session_id,
+            "How many customers?",
+            "There are 4 customers. SQL: SELECT COUNT(*) FROM customers.",
+            user_id="alice",
+        )
+
+        listed = chat_svc.list_sessions(user_id="alice")
+        history = chat_svc.get_history(session_id, user_id="alice")
+
+        assert session_id in {item.session_id for item in listed.data.sessions}
+        assert [message.role for message in history.data.messages] == ["user", "assistant"]
+        assert history.data.messages[0].content[0].payload["content"] == "How many customers?"
+        assert "SELECT COUNT(*)" in history.data.messages[1].content[0].payload["content"]
+
+
 class TestChatServiceListSessions:
     """Tests for list_sessions."""
 

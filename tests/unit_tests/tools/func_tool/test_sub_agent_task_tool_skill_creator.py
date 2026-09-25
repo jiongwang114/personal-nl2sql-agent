@@ -7,7 +7,11 @@ and wired through the SubAgentTaskTool dispatch machinery.
 """
 
 from dataengineer.configuration.node_type import NodeType
-from dataengineer.tools.func_tool.sub_agent_task_tool import BUILTIN_SUBAGENT_DESCRIPTIONS, NODE_CLASS_MAP, SubAgentTaskTool
+from dataengineer.tools.func_tool.sub_agent_task_tool import (
+    BUILTIN_SUBAGENT_DESCRIPTIONS,
+    NODE_CLASS_MAP,
+    SubAgentTaskTool,
+)
 from dataengineer.utils.constants import SYS_SUB_AGENTS
 
 

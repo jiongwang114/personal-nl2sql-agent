@@ -1,16 +1,18 @@
 
 import argparse
+import asyncio
 import csv
 import os
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from io import StringIO
+from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from dataengineer.agent.agent import Agent
 from dataengineer.api.auth import load_auth_provider
@@ -296,15 +298,13 @@ class DataEngineerAPIService:
             llm_status = "unknown"
 
             if self.agent_config:
-                # Create a temporary agent for health check using service configuration
-                temp_agent = Agent(self.args, self.agent_config)
+                def probe() -> tuple[dict, dict]:
+                    temp_agent = Agent(self.args, self.agent_config)
+                    return temp_agent.check_db(), temp_agent.probe_llm()
 
-                # Check database connectivity
-                db_check = temp_agent.check_db()
+                # Both probes perform blocking I/O; keep chat routes responsive.
+                db_check, llm_check = await asyncio.to_thread(probe)
                 database_status[self.agent_config.current_datasource] = db_check.get("status", "unknown")
-
-                # Check LLM connectivity
-                llm_check = temp_agent.probe_llm()
                 llm_status = llm_check.get("status", "unknown")
 
             return HealthResponse(
@@ -482,6 +482,7 @@ def create_app(agent_args: argparse.Namespace) -> FastAPI:
         ("dataengineer.api.routes.table_routes", "table"),
         ("dataengineer.api.routes.explorer_routes", "explorer"),
         ("dataengineer.api.routes.config_routes", "config"),
+        ("dataengineer.api.routes.datasource_import_routes", "datasource import"),
         ("dataengineer.api.routes.models_routes", "models"),
         ("dataengineer.api.routes.mcp_routes", "mcp"),
         ("dataengineer.api.routes.kb_routes", "kb"),
@@ -504,7 +505,14 @@ def create_app(agent_args: argparse.Namespace) -> FastAPI:
     # Route handlers with decorators
     @app.get("/", tags=["root"])
     async def root():
-        """Root endpoint with API information."""
+        """Serve the static frontend; API routes remain under ``/api``."""
+        static_index = Path(__file__).resolve().parents[2] / "frontend-static" / "index.html"
+        if static_index.is_file():
+            return FileResponse(
+                static_index,
+                media_type="text/html",
+                headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+            )
         return {"message": "DataEngineer Agent API", "version": "1.0.0", "docs": "/docs", "health": "/health"}
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])

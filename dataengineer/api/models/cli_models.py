@@ -24,6 +24,7 @@ class ExecuteSQLInput(BaseModel):
     )
 
     database_name: Optional[str] = Field(None, description="Database name")
+    datasource_id: Optional[str] = Field(None, description="Datasource ID used to select a configured connector")
     sql_query: str = Field(..., description="SQL query to execute")
     result_format: str = Field("arrow", description="Result format (arrow, csv, json)")
     system: bool = Field(False, description="Whether this is a system command")
@@ -173,10 +174,6 @@ class ChatInput(BaseModel):
         None, description="Whether to stream response; None means use server default"
     )
 
-    # Legacy fields for backward compatibility
-    context_id: Optional[str] = Field(None, description="Context ID (legacy)")
-
-
 class ActionInfo(BaseModel):
     """Action execution information."""
 
@@ -276,11 +273,30 @@ class CompactSessionData(BaseModel):
 class StreamChatInput(ChatInput):
     """Input for streaming chat via /chat/stream."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "message": "Show me total sales for last month",
+                "session_id": "session_123",
+                "runtime_variant": "single",
+                "model": "openai/gpt-4.1",
+                "database": "sales_db",
+            }
+        }
+    )
+
     subagent_id: Optional[str] = Field(default=None, description="Subagent ID (builtin name or DB SubAgent id)")
     prompt_version: Optional[str] = Field(default=None, description="Prompt version")
     prompt_language: str = Field(default="en", description="Prompt language")
-    runtime_variant: Literal["legacy", "single", "multi"] = Field(
-        default="legacy", description="Agent runtime used for this request"
+    runtime_variant: Literal["single", "multi"] = Field(
+        default="single", description="Agent runtime used for this request"
+    )
+    model: Optional[str] = Field(
+        default=None,
+        description="Per-request model override for runtimes that support model selection.",
+    )
+    thinking_level: Optional[Literal["off", "minimal", "low", "medium", "high", "xhigh", "max"]] = Field(
+        default=None, description="Pi reasoning level for this request; defaults to the project setting."
     )
     language: Optional[str] = Field(
         default=None,
@@ -486,6 +502,8 @@ class SSEEndData(BaseModel):
     cached_tokens: int = Field(0, description="Cache hit tokens")
     session_total_tokens: int = Field(0, description="Current context window usage (last model call input_tokens)")
     context_length: int = Field(0, description="Model max context window")
+    model: Optional[str] = Field(None, description="Provider/model used for this request")
+    thinking_level: Optional[str] = Field(None, description="Pi reasoning level used for this request")
 
 
 class SSEPingData(BaseModel):
@@ -520,10 +538,24 @@ class SSEEvent(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat() + "Z")
 
 
+class SessionEventData(BaseModel):
+    """Durable runtime event restored from the session SQLite store."""
+
+    event_id: str
+    session_id: str
+    sequence: int
+    event_type: str
+    role: str
+    payload: Dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+    redacted: bool = True
+
+
 class ChatHistoryData(BaseModel):
     """Chat history data."""
 
     messages: List[SSEMessagePayload] = Field(default_factory=list, description="chat history messages")
+    events: List[SessionEventData] = Field(default_factory=list, description="durable runtime events")
 
 
 class ChatModelInfo(BaseModel):

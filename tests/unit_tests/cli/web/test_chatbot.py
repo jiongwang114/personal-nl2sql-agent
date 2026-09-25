@@ -1,7 +1,6 @@
 """Unit tests for dataengineer/cli/web/chatbot.py (FastAPI-based web chatbot)."""
 
 import argparse
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -65,13 +64,10 @@ class TestReadTemplate:
         from dataengineer.cli.web.chatbot import _read_template
 
         html = _read_template()
-        assert "DatusChatbot" in html
-        assert "chatbot-root" in html
-        assert "{{ request_origin_json }}" in html
-        assert "{{ user_name_json }}" in html
-        assert "{{ chatbot_js }}" in html
-        assert "{{ chatbot_css }}" in html
-        assert "{{ react_js }}" in html
+        assert "DataEngineer" in html
+        assert 'id="view-workspace"' in html
+        assert 'data-rt="single"' in html
+        assert 'data-rt="multi"' in html
 
     def test_returns_string(self):
         from dataengineer.cli.web.chatbot import _read_template
@@ -145,12 +141,12 @@ class TestCreateWebApp:
             route_paths = [r.path for r in app.routes if hasattr(r, "path")]
             assert "/chatbot-assets" in route_paths or any("/chatbot-assets" in str(r) for r in app.routes)
 
-    def test_uses_cdn_when_no_chatbot_dist(self):
-        """Without --chatbot-dist, should use CDN URLs in rendered HTML."""
+    def test_single_file_frontend_needs_no_asset_mounts(self):
+        """The first-party workbench serves inline assets from the root page."""
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from dataengineer.cli.web.chatbot import _CDN_CHATBOT_JS, _CDN_REACT_JS, create_web_app
+        from dataengineer.cli.web.chatbot import create_web_app
 
         args = argparse.Namespace(
             datasource="test",
@@ -167,16 +163,17 @@ class TestCreateWebApp:
             mock_create_app.return_value = FastAPI()
             app = create_web_app(args)
 
-            # Should NOT mount /chatbot-assets
             route_paths = [r.path for r in app.routes if hasattr(r, "path")]
             assert "/chatbot-assets" not in route_paths
+            assert "/assets" not in route_paths
 
-            # Verify CDN URLs are actually rendered in the HTML response
+            # Verify the first-party workbench is rendered.
             client = TestClient(app, raise_server_exceptions=False)
             resp = client.get("/")
             assert resp.status_code == 200
-            assert _CDN_CHATBOT_JS in resp.text
-            assert _CDN_REACT_JS in resp.text
+            assert 'data-rt="single"' in resp.text
+            assert 'data-rt="multi"' in resp.text
+            assert 'data-rt="legacy"' not in resp.text
 
     def test_warns_when_dist_missing(self):
         """Should warn and fall back to CDN when dist path doesn't exist."""
@@ -264,15 +261,14 @@ class TestCreateWebApp:
             root_routes = [r for r in app.routes if hasattr(r, "path") and r.path == "/"]
             assert len(root_routes) > 0
 
-    def test_html_includes_runtime_selector_and_request_adapter(self):
+    def test_bundle_exposes_only_current_runtime_choices(self):
         from dataengineer.cli.web.chatbot import _read_template
 
         html = _read_template()
-
-        assert 'data-runtime="legacy"' in html
-        assert 'data-runtime="single"' in html
-        assert 'data-runtime="multi"' in html
-        assert "payload.runtime_variant = selectedRuntime" in html
+        assert 'data-rt="single"' in html
+        assert 'data-rt="multi"' in html
+        assert 'data-rt="legacy"' not in html
+        assert 'value="legacy"' not in html
         assert "/api/v1/chat/stream" in html
 
 
@@ -381,28 +377,21 @@ class TestRunWebInterface:
 
 @pytest.mark.ci
 class TestTemplateFile:
-    """Verify the HTML template file exists and is valid."""
+    """Verify the CLI serves the maintained static frontend."""
 
-    def test_template_exists(self):
-        from dataengineer.cli.web.chatbot import _TEMPLATES_DIR
+    def test_static_frontend_exists(self):
+        from dataengineer.cli.web.chatbot import _read_template
 
-        template_path = os.path.join(_TEMPLATES_DIR, "index.html")
-        assert os.path.isfile(template_path)
+        content = _read_template()
+        assert "id=\"view-workspace\"" in content
 
-    def test_template_contains_chatbot_init(self):
-        from dataengineer.cli.web.chatbot import _TEMPLATES_DIR
+    def test_bundled_template_contains_workbench_root(self):
+        from dataengineer.cli.web.chatbot import _read_template
 
-        template_path = os.path.join(_TEMPLATES_DIR, "index.html")
-        with open(template_path, encoding="utf-8") as f:
-            content = f.read()
-        assert "DatusChatbot.initChatbot" in content
-        assert "chatbot-root" in content
-        assert "{{ chatbot_js }}" in content
-        assert "{{ chatbot_css }}" in content
-        assert "{{ react_js }}" in content
-        assert "{{ react_dom_js }}" in content
-        assert "{{ request_origin_json }}" in content
-        assert "{{ user_name_json }}" in content
+        content = _read_template()
+        assert "DataEngineer" in content
+        assert 'id="view-workspace"' in content
+        assert 'class="runtime-switch"' in content
 
 
 # ═══════════════════════════════════════════════════════════════════════════

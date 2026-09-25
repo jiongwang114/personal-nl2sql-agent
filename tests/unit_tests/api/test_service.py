@@ -6,6 +6,8 @@ CI-level: zero external dependencies. All Agent, TaskStore, and LLM calls mocked
 """
 
 import argparse
+import asyncio
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -465,6 +467,31 @@ class TestRecordFeedback:
 
 
 class TestHealthCheck:
+    @pytest.mark.asyncio
+    async def test_slow_probe_does_not_block_event_loop(self):
+        service = _make_service()
+        service.agent_config = MagicMock()
+        service.agent_config.current_datasource = "ns"
+        started = threading.Event()
+        release = threading.Event()
+        mock_agent = MagicMock()
+
+        def check_db():
+            started.set()
+            release.wait(timeout=2)
+            return {"status": "success"}
+
+        mock_agent.check_db.side_effect = check_db
+        mock_agent.probe_llm.return_value = {"status": "ok"}
+        with patch("dataengineer.api.service.Agent", return_value=mock_agent):
+            task = asyncio.create_task(service.health_check())
+            try:
+                await asyncio.wait_for(asyncio.to_thread(started.wait, 1), timeout=1.5)
+                await asyncio.wait_for(asyncio.sleep(0), timeout=0.1)
+            finally:
+                release.set()
+            assert (await task).status == "healthy"
+
     @pytest.mark.asyncio
     async def test_healthy_when_agent_config_available(self):
         service = _make_service()

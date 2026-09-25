@@ -11,6 +11,7 @@ asyncio.Task so that client disconnects do not cancel the computation.
 """
 
 import json
+import uuid
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, HTTPException, Path, Query
@@ -32,12 +33,16 @@ from dataengineer.api.models.cli_models import (
     CompactSessionData,
     CompactSessionInput,
     FeedbackChatInput,
+    SSEErrorData,
+    SSEEvent,
     StreamChatInput,
     UserInteractionInput,
 )
 from dataengineer.utils.feedback_prompt import build_reaction_feedback_prompt
+from dataengineer.utils.loggings import get_logger
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+logger = get_logger(__name__)
 
 
 # Additional builtin subagents accepted by ``stream_chat`` beyond the canonical
@@ -85,12 +90,134 @@ async def stream_chat(
         )
 
     async def generate_sse():
-        if request.runtime_variant == "legacy":
-            events = svc.chat.stream_chat(request, sub_agent_id=sub_agent_id, user_id=ctx.user_id)
-        else:
-            datasource = request.database or svc.agent_config.current_datasource
-            events = svc.pi_runtime.stream_chat(request, datasource=datasource)
-        async for event in events:
+        datasource = request.database or svc.agent_config.current_datasource
+        session_id = request.session_id
+        assistant_message = ""
+        run_id = uuid.uuid4().hex
+
+        async def persist_event(event_type: str, payload, event_key: str, role: str = "assistant"):
+            if not session_id:
+                return
+            svc.chat.persist_pi_event(
+                session_id,
+                event_type,
+                payload,
+                user_id=ctx.user_id,
+                role=role,
+                event_id=f"{run_id}:{event_key}",
+            )
+
+        async for event in svc.pi_runtime.stream_chat(request, datasource=datasource):
+            if event.event == "session":
+                session_id = event.data.session_id
+                await persist_event(
+                    "agent_start",
+                    {"run_id": run_id, "mode": "stream", "runtime_variant": request.runtime_variant},
+                    "agent_start",
+                )
+            elif event.event == "message":
+                for content in event.data.payload.content:
+                    content_payload = dict(content.payload or {})
+                    if content.type == "call-tool":
+                        await persist_event("tool_execution_start", content_payload, f"tool_start:{event.id}")
+                    elif content.type == "call-tool-result":
+                        await persist_event("tool_execution_end", content_payload, f"tool_end:{event.id}")
+                    elif content.type == "progress":
+                        await persist_event("progress", content_payload, f"progress:{event.id}")
+                    elif content.type == "error":
+                        await persist_event("error", content_payload, f"error:{event.id}")
+                    if content.type not in {"markdown", "text"}:
+                        continue
+                    text = content.payload.get("content")
+                    if text is None:
+                        text = content.payload.get("text")
+                    if isinstance(text, str) and text.strip():
+                        assistant_message = text
+                        await persist_event(
+                            "assistant_answer",
+                            {"content": text, "format": content.type},
+                            f"assistant_answer:{event.id}",
+                        )
+                        break
+            elif event.event == "error":
+                await persist_event(
+                    "error",
+                    event.data.model_dump(mode="json"),
+                    f"error:{event.id}",
+                )
+                await persist_event(
+                    "agent_end",
+                    {
+                        "run_id": run_id,
+                        "status": "error",
+                        "termination_reason": event.data.error_type,
+                        "has_answer": bool(assistant_message),
+                    },
+                    f"agent_end:error:{event.id}",
+                )
+            elif event.event == "end":
+                if not session_id or not assistant_message:
+                    if session_id:
+                        await persist_event(
+                            "error",
+                            {"code": "missing_assistant_answer", "message": "Pi runtime completed without a persistable chat exchange."},
+                            f"error:missing-answer:{event.id}",
+                        )
+                        await persist_event(
+                            "agent_end",
+                            {"run_id": run_id, "status": "error", "termination_reason": "missing_assistant_answer"},
+                            f"agent_end:missing-answer:{event.id}",
+                        )
+                    error_event = SSEEvent(
+                        id=event.id,
+                        event="error",
+                        data=SSEErrorData(
+                            error="Pi runtime completed without a persistable chat exchange.",
+                            error_type="SESSION_PERSISTENCE_ERROR",
+                            session_id=session_id,
+                        ),
+                    )
+                    yield f"id: {error_event.id}\nevent: {error_event.event}\ndata: {error_event.data.model_dump_json()}\n\n"
+                    return
+                try:
+                    await svc.chat.persist_pi_exchange(
+                        session_id,
+                        request.message,
+                        assistant_message,
+                        user_id=ctx.user_id,
+                    )
+                except Exception:
+                    logger.exception("Failed to persist Pi chat exchange")
+                    try:
+                        await persist_event(
+                            "error",
+                            {"code": "session_persistence_error", "message": "The answer was generated, but chat history could not be saved."},
+                            f"error:persist:{event.id}",
+                        )
+                    except Exception:
+                        logger.exception("Failed to persist Pi persistence error event")
+                    error_event = SSEEvent(
+                        id=event.id,
+                        event="error",
+                        data=SSEErrorData(
+                            error="The answer was generated, but chat history could not be saved.",
+                            error_type="SESSION_PERSISTENCE_ERROR",
+                            session_id=session_id,
+                        ),
+                    )
+                    yield f"id: {error_event.id}\nevent: {error_event.event}\ndata: {error_event.data.model_dump_json()}\n\n"
+                    return
+                await persist_event(
+                    "agent_end",
+                    {
+                        "run_id": run_id,
+                        "status": "success",
+                        "has_answer": True,
+                        "action_count": event.data.action_count,
+                    },
+                    "agent_end",
+                )
+
             yield f"id: {event.id}\nevent: {event.event}\ndata: {event.data.model_dump_json()}\n\n"
 
     return StreamingResponse(generate_sse(), media_type="text/event-stream", headers=_sse_headers())

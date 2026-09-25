@@ -36,6 +36,14 @@ class TestExplorerServiceInit:
         svc = ExplorerService(agent_config=real_agent_config)
         assert svc.subject_tree_store is not None
 
+    def test_init_rebinds_project_path_manager(self, real_agent_config):
+        from dataengineer.utils.path_manager import DataEngineerPathManager, get_path_manager, set_current_path_manager
+
+        set_current_path_manager(DataEngineerPathManager(datus_home=real_agent_config.home))
+        ExplorerService(agent_config=real_agent_config)
+
+        assert get_path_manager().project_name == real_agent_config.project_name
+
 
 @pytest.mark.asyncio
 class TestExplorerServiceGetSubjectList:

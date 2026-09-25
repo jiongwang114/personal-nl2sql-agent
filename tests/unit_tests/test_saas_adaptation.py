@@ -13,6 +13,7 @@ Covers:
 import inspect
 import os
 import sqlite3
+from contextlib import closing
 from typing import Union
 from unittest.mock import MagicMock, patch
 
@@ -404,7 +405,7 @@ class TestSessionManagerProjectIsolation:
             assert os.path.isfile(db_path)
 
             # Write a session record so session_exists returns True
-            with sqlite3.connect(db_path) as conn:
+            with closing(sqlite3.connect(db_path)) as conn:
                 conn.execute(
                     "INSERT OR IGNORE INTO agent_sessions (session_id) VALUES (?)",
                     (session_id,),

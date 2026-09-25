@@ -94,9 +94,14 @@ class TestCLIServiceExecuteSQL:
     @pytest.mark.asyncio
     async def test_execute_sql_json_format(self, cli_svc):
         """execute_sql with json format returns JSON string."""
+        import json
+
         request = ExecuteSQLInput(sql_query="SELECT CDSCode FROM schools LIMIT 2", result_format="json")
         result = await cli_svc.execute_sql(request)
         assert result.success is True
+        rows = json.loads(result.data.sql_return)
+        assert len(rows) == 2
+        assert result.data.columns == ["CDSCode"]
 
     @pytest.mark.asyncio
     async def test_execute_sql_invalid_sql_returns_error(self, cli_svc):

@@ -18,6 +18,7 @@ from dataengineer.api.routes.config_routes import (
     update_datasources_endpoint,
     update_models_endpoint,
 )
+from dataengineer.configuration.agent_config import ModelConfig
 from dataengineer.utils.exceptions import DataEngineerException
 
 
@@ -84,6 +85,48 @@ async def test_get_agent_config_handles_empty_datasources():
     result = await get_agent_config_endpoint(svc)
 
     assert result.data["datasources"] == {}
+
+
+@pytest.mark.asyncio
+async def test_get_agent_config_redacts_credentials_and_connection_uri():
+    svc = _mock_svc(
+        datasources={
+            "db": {
+                "db": {
+                    "type": "postgresql",
+                    "password": "db-secret",
+                    "uri": "postgresql://alice:db-secret@example.test/app",
+                }
+            }
+        },
+        models={"main": {"type": "openai", "model": "gpt", "api_key": "model-secret"}},
+    )
+
+    result = await get_agent_config_endpoint(svc)
+
+    assert result.data["models"]["main"]["api_key"] == "***"
+    assert result.data["datasources"]["db"]["password"] == "***"
+    assert result.data["datasources"]["db"]["uri"] == "postgresql://alice:***@example.test/app"
+
+
+@pytest.mark.asyncio
+async def test_get_agent_config_redacts_dataclass_model_credentials():
+    svc = _mock_svc(
+        datasources={},
+        models={
+            "main": ModelConfig(
+                type="openai",
+                api_key="model-secret",
+                model="gpt",
+                base_url="https://api.example.test/v1",
+            )
+        },
+    )
+
+    result = await get_agent_config_endpoint(svc)
+
+    assert result.data["models"]["main"]["api_key"] == "***"
+    assert result.data["models"]["main"]["base_url"] == "https://api.example.test/v1"
 
 
 class _FakeConfigManager:

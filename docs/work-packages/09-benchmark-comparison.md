@@ -1,5 +1,7 @@
 # WP-09: Benchmark Comparison
 
+> Historical work package. Its three-way rollout notes are superseded by `docs/frontend-next-work-plan.md`; current benchmark runs only Single and Multi.
+
 ## Status
 
 - state: smoke_run_blocked; full_model_runs_pending

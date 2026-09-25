@@ -20,7 +20,15 @@ def parse_args() -> argparse.Namespace:
 
 def decode_result(result: Any) -> dict[str, Any]:
     if result.isError:
-        return {"success": 0, "error": "MCP tool returned an error", "result": None}
+        error_text = next(
+            (
+                content.text
+                for content in result.content
+                if isinstance(getattr(content, "text", None), str) and content.text.strip()
+            ),
+            "MCP tool returned an error",
+        )
+        return {"success": 0, "error": error_text, "result": None}
     for content in result.content:
         text = getattr(content, "text", None)
         if not isinstance(text, str):
@@ -32,6 +40,23 @@ def decode_result(result: Any) -> dict[str, Any]:
         if isinstance(value, dict):
             return value
     return {"success": 0, "error": "MCP tool returned no JSON object", "result": None}
+
+
+def call_registered_tool(datasource: str, tool_name: str, tool_arguments: dict[str, Any], config_path: str) -> dict[str, Any]:
+    """Call a registered database tool directly when stdio omits the tool from tools/list."""
+    from dataengineer.mcp_server import create_server
+
+    server = create_server(datasource=datasource, config_path=config_path or None)
+    try:
+        tool_instance = next(
+            (instance for instance in server.tools.values() if instance and callable(getattr(instance, tool_name, None))),
+            None,
+        )
+        if tool_instance is None:
+            return {"success": 0, "error": f"Unknown DataEngineer tool: {tool_name}", "result": None}
+        return server._format_result(getattr(tool_instance, tool_name)(**tool_arguments))
+    finally:
+        server.close()
 
 
 async def call_tool(args: argparse.Namespace) -> dict[str, Any]:
@@ -55,7 +80,16 @@ async def call_tool(args: argparse.Namespace) -> dict[str, Any]:
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.call_tool(args.tool, tool_arguments)
-            return decode_result(result)
+            decoded = decode_result(result)
+            if decoded.get("success") != 1 and str(decoded.get("error", "")).startswith("Unknown tool:"):
+                return await asyncio.to_thread(
+                    call_registered_tool,
+                    args.datasource,
+                    args.tool,
+                    tool_arguments,
+                    args.config,
+                )
+            return decoded
 
 
 def main() -> int:

@@ -41,6 +41,11 @@ class ExplorerService:
         """
         self.agent_config = agent_config
         self.datasource_id = agent_config.current_datasource
+        # Storage constructors consult the context-local path manager. Bind it
+        # to this request's AgentConfig before creating project-scoped stores.
+        from dataengineer.utils.path_manager import set_current_path_manager
+
+        set_current_path_manager(agent_config.path_manager)
         logger.info("ExplorerService initialized")
 
         from dataengineer.storage.ext_knowledge.store import ExtKnowledgeRAG

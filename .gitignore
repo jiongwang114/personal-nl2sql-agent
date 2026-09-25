@@ -3,6 +3,8 @@
 .dataengineer/
 .dataengineer_test_data/
 .pytest_cache/
+.pytest-tmp-*/
+.coverage
 .ruff_cache/
 __pycache__/
 *.py[cod]
@@ -12,7 +14,15 @@ reports/
 *.sqlite
 *.db
 *.egg-info/
+original-project/
+é¡¹ç›®ä»‹ç»/
+å¯åŠ¨ SQL Agent.bat
+docs/personal-*.md
 tests/data/**/*.db
 tests/data/**/*.sqlite
 
-ÏîÄ¿½éÉÜ/
+!sample_data/duckdb-demo.duckdb
+!sample_data/mf-demo.duckdb
+!sample_data/california_schools/california_schools.sqlite
+
+ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½ï¿½/

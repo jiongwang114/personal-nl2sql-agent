@@ -113,7 +113,22 @@ class DataEngineerService:
     @property
     def pi_runtime(self):
         if self._pi_runtime is None:
-            self._pi_runtime = PiRuntimeService()
+            import os
+            from pathlib import Path
+
+            project_root = Path(self._agent_config.project_root)
+            from dataengineer.api.services.credential_store import CredentialStore
+
+            config_path = Path(os.getenv("DATAENGINEER_CONFIG", "")) if os.getenv("DATAENGINEER_CONFIG") else None
+            if config_path is None or not config_path.is_file():
+                local_config = project_root / "conf" / "agent.yml"
+                config_path = local_config if local_config.is_file() else Path(self._agent_config.home) / "conf" / "agent.yml"
+            self._pi_runtime = PiRuntimeService(
+                project_root=project_root,
+                config_path=config_path,
+                agent_config=self._agent_config,
+                credential_scope=CredentialStore.scope_id(self._project_id, project_root),
+            )
         return self._pi_runtime
 
     @property

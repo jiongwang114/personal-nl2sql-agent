@@ -4,11 +4,24 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
-from dataengineer.api.models.cli_models import StreamChatInput, UserInteractionInput
+from dataengineer.api.deps import get_app_context, get_dataengineer_service
+from dataengineer.api.models.cli_models import (
+    IMessageContent,
+    SSEDataType,
+    SSEEndData,
+    SSEEvent,
+    SSEMessageData,
+    SSEMessagePayload,
+    SSESessionData,
+    StreamChatInput,
+    UserInteractionInput,
+)
 from dataengineer.api.routes.chat_routes import (
     _is_valid_subagent_id,
+    router,
     stream_chat,
     submit_user_interaction,
 )
@@ -178,15 +191,24 @@ class TestStreamChat404Gate:
 
     @pytest.mark.asyncio
     async def test_none_subagent_bypasses_gate(self):
-        """Without a subagent_id the 404 gate is skipped — default routing handles it."""
+        """Without a subagent_id the request uses the default Single runtime."""
         svc = _mock_svc_with_nodes()
-        svc.chat.stream_chat = MagicMock(return_value=AsyncMock().__aiter__())
+        svc.agent_config.current_datasource = "demo"
+
+        async def empty_events():
+            if False:
+                yield None
+
+        svc.pi_runtime.stream_chat = MagicMock(return_value=empty_events())
         ctx = MagicMock(user_id="u1")
         request = StreamChatInput(message="hi", subagent_id=None)
 
-        # Should not raise — returns a StreamingResponse.
         response = await stream_chat(request, svc, ctx)
-        assert response is not None
+        _ = [chunk async for chunk in response.body_iterator]
+
+        assert request.runtime_variant == "single"
+        svc.pi_runtime.stream_chat.assert_called_once_with(request, datasource="demo")
+        svc.chat.stream_chat.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_valid_builtin_passes_gate(self):
@@ -235,11 +257,117 @@ class TestStreamChat404Gate:
 
         svc.pi_runtime.stream_chat.assert_called_once_with(request, datasource="benchmark_demo")
 
+    @pytest.mark.asyncio
+    async def test_pi_variant_persists_exchange_before_end(self):
+        svc = _mock_svc_with_nodes()
+        svc.agent_config.current_datasource = "demo"
+        svc.chat.persist_pi_exchange = AsyncMock()
+
+        async def pi_events():
+            yield SSEEvent(id=1, event="session", data=SSESessionData(session_id="pi_single_test"))
+            yield SSEEvent(
+                id=2,
+                event="message",
+                data=SSEMessageData(
+                    type=SSEDataType.UPDATE_MESSAGE,
+                    payload=SSEMessagePayload(
+                        message_id="m1",
+                        role="assistant",
+                        content=[IMessageContent(type="markdown", payload={"content": "There are 4."})],
+                    ),
+                ),
+            )
+            yield SSEEvent(
+                id=3,
+                event="end",
+                data=SSEEndData(session_id="pi_single_test", total_events=3, action_count=1, duration=1.0),
+            )
+
+        svc.pi_runtime.stream_chat = MagicMock(return_value=pi_events())
+        ctx = MagicMock(user_id="alice")
+        request = StreamChatInput(message="How many?", runtime_variant="single")
+
+        response = await stream_chat(request, svc, ctx)
+        chunks = [chunk async for chunk in response.body_iterator]
+
+        svc.chat.persist_pi_exchange.assert_awaited_once_with(
+            "pi_single_test", "How many?", "There are 4.", user_id="alice"
+        )
+        assert "event: end" in chunks[-1]
+
+    @pytest.mark.asyncio
+    async def test_pi_variant_persists_text_payload_as_assistant_answer(self):
+        svc = _mock_svc_with_nodes()
+        svc.agent_config.current_datasource = "demo"
+        svc.chat.persist_pi_exchange = AsyncMock()
+
+        async def pi_events():
+            yield SSEEvent(id=1, event="session", data=SSESessionData(session_id="pi_single_text"))
+            yield SSEEvent(
+                id=2,
+                event="message",
+                data=SSEMessageData(
+                    type=SSEDataType.UPDATE_MESSAGE,
+                    payload=SSEMessagePayload(
+                        message_id="m1",
+                        role="assistant",
+                        content=[IMessageContent(type="text", payload={"text": "There are 4."})],
+                    ),
+                ),
+            )
+            yield SSEEvent(
+                id=3,
+                event="end",
+                data=SSEEndData(session_id="pi_single_text", total_events=3, action_count=1, duration=1.0),
+            )
+
+        svc.pi_runtime.stream_chat = MagicMock(return_value=pi_events())
+        request = StreamChatInput(message="How many?", runtime_variant="single")
+
+        response = await stream_chat(request, svc, MagicMock(user_id="alice"))
+        chunks = [chunk async for chunk in response.body_iterator]
+
+        svc.chat.persist_pi_exchange.assert_awaited_once_with(
+            "pi_single_text", "How many?", "There are 4.", user_id="alice"
+        )
+        assert "event: end" in chunks[-1]
+
 
 class TestRuntimeVariantModel:
-    def test_defaults_to_legacy(self):
-        assert StreamChatInput(message="hi").runtime_variant == "legacy"
+    def test_defaults_to_single(self):
+        assert StreamChatInput(message="hi").runtime_variant == "single"
+
+    def test_schema_only_exposes_current_runtimes(self):
+        schema = StreamChatInput.model_json_schema()
+        runtime_schema = schema["properties"]["runtime_variant"]
+        assert runtime_schema["enum"] == ["single", "multi"]
+        assert runtime_schema["default"] == "single"
+        assert schema["example"]["runtime_variant"] == "single"
+        assert "context_id" not in schema["properties"]
+
+    def test_rejects_legacy_variant(self):
+        with pytest.raises(ValueError):
+            StreamChatInput(message="hi", runtime_variant="legacy")
 
     def test_rejects_unknown_variant(self):
         with pytest.raises(ValueError):
             StreamChatInput(message="hi", runtime_variant="unknown")
+
+
+@pytest.mark.parametrize("runtime_variant", ["legacy", "unknown"])
+def test_stream_endpoint_rejects_unsupported_runtime_before_dispatch(runtime_variant):
+    app = FastAPI()
+    svc = MagicMock()
+    app.dependency_overrides[get_dataengineer_service] = lambda: svc
+    app.dependency_overrides[get_app_context] = lambda: MagicMock(user_id="alice")
+    app.include_router(router)
+
+    response = TestClient(app).post(
+        "/api/v1/chat/stream",
+        json={"message": "Do not run", "runtime_variant": runtime_variant},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", "runtime_variant"]
+    svc.pi_runtime.stream_chat.assert_not_called()
+    svc.chat.stream_chat.assert_not_called()

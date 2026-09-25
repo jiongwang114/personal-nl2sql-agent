@@ -184,12 +184,20 @@ agent:
       bird_school:
         name: california_schools
         type: sqlite
-        uri: ~/benchmark/bird/dev_20240627/dev_databases/california_schools/california_schools.sqlite # just support glob pattern
+        uri: sample_data/california_schools/california_schools.sqlite
+      california_schools:
+        name: california_schools
+        type: sqlite
+        uri: sample_data/california_schools/california_schools.sqlite
+      card_games:
+        name: card_games
+        type: sqlite
+        uri: tests/data/card_games.sqlite
       duckdb:
         type: duckdb
         name: duck
         default: true
-        uri: tests/data/dataengineer_metricflow_db/duck.db # absolute path: sqlite:////full/path/to/example.db
+        uri: sample_data/mf-demo.duckdb
       local_duckdb:
         type: duckdb
         name: ssb

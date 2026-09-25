@@ -14,7 +14,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 # Default clients configuration (fallback if config file not found)
-DEFAULT_CLIENTS = {"datus_client": "datus_secret_key"}
+DEFAULT_CLIENTS = {"dataengineer_client": "dataengineer_secret_key"}
 
 # Default JWT configuration
 DEFAULT_JWT_CONFIG = {"secret_key": "your-secret-key-change-in-production", "algorithm": "HS256", "expiration_hours": 2}

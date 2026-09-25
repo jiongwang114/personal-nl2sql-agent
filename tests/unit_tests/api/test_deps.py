@@ -191,6 +191,35 @@ class TestGetDataEngineerService:
         assert call_kwargs["default_interactive"] is False
         assert call_kwargs["project_id"] == "p1"
 
+    async def test_project_default_datasource_takes_precedence_over_launch_default(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        mock_auth = MagicMock()
+        ctx = AppContext(user_id="user-1", project_id="proj-1", config=None)
+        mock_auth.authenticate = AsyncMock(return_value=ctx)
+        cache = MagicMock(spec=DataEngineerServiceCache)
+
+        async def build_service(_key, factory, expected_fingerprint=None):
+            return await factory()
+
+        cache.get_or_create = AsyncMock(side_effect=build_service)
+        deps._auth_provider = mock_auth
+        deps._service_cache = cache
+        deps._datasource = "launch_default"
+        request = MagicMock()
+        request.state = MagicMock()
+
+        with (
+            patch("dataengineer.api.deps.load_project_override", return_value=SimpleNamespace(default_datasource="imported_db")),
+            patch("dataengineer.api.deps.load_agent_config") as load_config,
+            patch("dataengineer.api.deps.DataEngineerService.compute_fingerprint", return_value="fp"),
+            patch("dataengineer.api.deps.DataEngineerService", return_value=MagicMock()),
+        ):
+            await get_dataengineer_service(request)
+
+        load_config.assert_called_once_with(datasource="imported_db")
+
     async def test_factory_loads_config_when_none(self, real_agent_config):
         """Factory in get_dataengineer_service loads config when ctx.config is None."""
         from dataengineer.api.auth.no_auth_provider import NoAuthProvider
@@ -216,5 +245,34 @@ class TestGetDataEngineerService:
         except RuntimeError as e:
             # Expected: config not found
             assert "Failed to load agent config" in str(e)
+        finally:
+            await cache.shutdown()
+
+    async def test_project_default_datasource_overrides_launch_default(self, real_agent_config):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        auth_provider = MagicMock()
+        ctx = AppContext(user_id="user-1", project_id="proj-1", config=None)
+        auth_provider.authenticate = AsyncMock(return_value=ctx)
+        cache = DataEngineerServiceCache()
+        deps._auth_provider = auth_provider
+        deps._service_cache = cache
+        deps._datasource = "launch_default"
+        requested = {}
+
+        def fake_load(**kwargs):
+            requested.update(kwargs)
+            return real_agent_config
+
+        request = MagicMock()
+        request.state = MagicMock()
+        try:
+            with (
+                patch("dataengineer.api.deps.load_project_override", return_value=SimpleNamespace(default_datasource="imported_db")),
+                patch("dataengineer.api.deps.load_agent_config", side_effect=fake_load),
+            ):
+                await get_dataengineer_service(request)
+            assert requested["datasource"] == "imported_db"
         finally:
             await cache.shutdown()

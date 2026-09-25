@@ -10,6 +10,7 @@ class DatabaseInfo(BaseModel):
     """Information about a database connection."""
 
     name: str = Field(..., description="Database name")
+    datasource_id: str = Field("", description="Configured datasource identifier")
     uri: str = Field(..., description="Database connection URI")
     type: str = Field(..., description="Database type (sqlite, duckdb, postgresql, etc.)")
     current: bool = Field(..., description="Whether this is the current database")

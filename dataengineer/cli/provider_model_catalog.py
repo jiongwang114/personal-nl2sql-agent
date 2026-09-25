@@ -56,10 +56,12 @@ OPENROUTER_VENDOR_MAP: Dict[str, str] = {
     "thudm": "glm",
 }
 
-# These providers route through vendor-specific gateways whose model SKUs are
-# not exposed in the public OpenRouter catalog. Keep their local `models` list.
+# These providers use gateway-specific IDs that can differ from OpenRouter
+# slugs. Keep their configured `models` allowlist.
 PROTECTED_PROVIDERS = frozenset(
     {
+        "custom",
+        "deepseek",
         "alibaba_coding",
         "glm_coding",
         "minimax_coding",

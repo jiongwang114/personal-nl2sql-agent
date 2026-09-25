@@ -53,7 +53,7 @@ def test_to_str_serializes_dataclass_and_uuid():
     payload = json.loads(to_str(instance))
     assert payload["name"] == "demo"
     assert payload["identifier"] == str(instance.identifier)
-    assert payload["location"] == "/tmp/example"
+    assert payload["location"] == str(Path("/tmp/example"))
 
 
 def test_to_pretty_str_from_json_text_roundtrip():
@@ -475,7 +475,7 @@ class TestNormalizeForJson:
     def test_path_serialized_as_string(self):
         p = Path("/tmp/test")
         result = json.loads(to_str({"p": p}))
-        assert result["p"] == "/tmp/test"
+        assert result["p"] == str(p)
 
     def test_bytes_decoded_to_string(self):
         result = json.loads(to_str({"data": b"hello"}))

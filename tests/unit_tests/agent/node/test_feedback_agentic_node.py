@@ -611,7 +611,7 @@ class TestFeedbackSystemPrompt:
         node.input = FeedbackNodeInput(user_message="Analyze and archive")
 
         workspace_root = Path(node._resolve_workspace_root())
-        caller_memory_dir = workspace_root / ".datus" / "memory" / "chat"
+        caller_memory_dir = workspace_root / ".dataengineer" / "memory" / "chat"
         caller_memory_dir.mkdir(parents=True, exist_ok=True)
         memory_content = "# Chat memory\n- user prefers DuckDB over SQLite for local analytics"
         (caller_memory_dir / "MEMORY.md").write_text(memory_content, encoding="utf-8")
@@ -686,7 +686,7 @@ class TestFeedbackSystemPrompt:
         node.input = FeedbackNodeInput(user_message="Analyze and archive")
 
         workspace_root = Path(node._resolve_workspace_root())
-        caller_memory_dir = workspace_root / ".datus" / "memory" / "chat"
+        caller_memory_dir = workspace_root / ".dataengineer" / "memory" / "chat"
         caller_memory_dir.mkdir(parents=True, exist_ok=True)
         (caller_memory_dir / "MEMORY.md").write_text("", encoding="utf-8")
 

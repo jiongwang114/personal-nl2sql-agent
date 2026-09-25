@@ -157,10 +157,13 @@ class TestWriteRemovePidFile:
 
 class TestIsProcessRunning:
     def test_running_process(self):
-        assert _is_process_running(os.getpid()) is True
+        with patch("dataengineer.api.main.os.kill") as mock_kill:
+            assert _is_process_running(12345) is True
+        mock_kill.assert_called_once_with(12345, 0)
 
     def test_non_running_process(self):
-        assert _is_process_running(999999999) is False
+        with patch("dataengineer.api.main.os.kill", side_effect=ProcessLookupError):
+            assert _is_process_running(999999999) is False
 
 
 class TestStatus:
@@ -176,8 +179,9 @@ class TestStatus:
 
     def test_running_when_process_alive(self, tmp_path, capsys):
         pid_file = tmp_path / "test.pid"
-        pid_file.write_text(str(os.getpid()))
-        assert _status(pid_file) == 0
+        pid_file.write_text("12345")
+        with patch("dataengineer.api.main._is_process_running", return_value=True):
+            assert _status(pid_file) == 0
         assert "running" in capsys.readouterr().out
 
 
@@ -243,7 +247,15 @@ class TestRedirectStdio:
         log_dir = tmp_path / "logs" / "subdir"
         log_file = log_dir / "test.log"
 
-        with patch("dataengineer.api.main.os.dup2") as mock_dup2:
+        with (
+            patch("dataengineer.api.main.os.dup2") as mock_dup2,
+            patch("dataengineer.api.main.sys.stdin") as mock_stdin,
+            patch("dataengineer.api.main.sys.stdout") as mock_stdout,
+            patch("dataengineer.api.main.sys.stderr") as mock_stderr,
+        ):
+            mock_stdin.fileno.return_value = 0
+            mock_stdout.fileno.return_value = 1
+            mock_stderr.fileno.return_value = 2
             _redirect_stdio(log_file)
 
         assert log_dir.exists()
@@ -450,7 +462,7 @@ class TestStopForceKill:
 
         assert result == 0
         assert signal.SIGTERM in kill_signals
-        assert signal.SIGKILL in kill_signals
+        assert (signal.SIGTERM if sys.platform == "win32" else signal.SIGKILL) == kill_signals[-1]
         assert not pid_file.exists()
 
     def test_stop_force_kill_ignores_process_lookup_error(self, tmp_path):
@@ -459,7 +471,7 @@ class TestStopForceKill:
         pid_file.write_text("4242")
 
         def fake_kill(pid, sig):
-            if sig == signal.SIGKILL:
+            if sig == (signal.SIGTERM if sys.platform == "win32" else signal.SIGKILL):
                 raise ProcessLookupError()
 
         with (
@@ -551,7 +563,7 @@ class TestDaemonWorker:
         agent_args = argparse.Namespace()
 
         with (
-            patch("dataengineer.api.main.os.setsid") as mock_setsid,
+            patch("dataengineer.api.main.os.setsid", create=True) as mock_setsid,
             patch("dataengineer.api.main.os.umask") as mock_umask,
             patch("dataengineer.api.main.configure_logging") as mock_conf,
             patch("dataengineer.api.main._redirect_stdio") as mock_redir,
@@ -561,8 +573,12 @@ class TestDaemonWorker:
         ):
             _daemon_worker(args, agent_args, pid_file, log_file)
 
-        mock_setsid.assert_called_once()
-        mock_umask.assert_called_once_with(0)
+        if sys.platform == "win32":
+            mock_setsid.assert_not_called()
+            mock_umask.assert_not_called()
+        else:
+            mock_setsid.assert_called_once()
+            mock_umask.assert_called_once_with(0)
         mock_conf.assert_called_once()
         mock_redir.assert_called_once_with(log_file)
         mock_run.assert_called_once_with(args, agent_args)

@@ -33,9 +33,10 @@ async def get_table_detail(
         ...,
         description="Full table name e.g. 'production_db.public.frpm' or 'db.schema.table'",
     ),
+    datasource_id: str = Query("", description="Configured datasource identifier"),
 ) -> Result[GetTableDetailData]:
     """Get table detail."""
-    return await asyncio.to_thread(svc.datasource.get_table_schema, table)
+    return await asyncio.to_thread(svc.datasource.get_table_schema, table, datasource_id or None)
 
 
 # ========== SemanticModel Endpoints ==========

@@ -131,8 +131,8 @@ class TestWhitelistAnchors:
         anchors = whitelist_anchors(root_path=project, current_node=None, datus_home=fake_home)
         # Expect exactly two anchors: project .dataengineer/skills and home .dataengineer/skills.
         # No per-node memory anchor because current_node is None.
-        assert len(anchors) == 2
-        expected_suffixes = {(".dataengineer", "skills")}
+        assert len(anchors) == 3
+        expected_suffixes = {(".datus", "skills"), (".dataengineer", "skills")}
         seen = {(a.parent.name, a.name) for a in anchors}
         assert seen == expected_suffixes
 
@@ -149,19 +149,24 @@ class TestBuildWalkPatterns:
         excludes, _ = build_walk_patterns(root_path=project, current_node="chat")
         # Both the directory itself and its contents must be excluded,
         # otherwise ``.dataengineer`` survives the first-level match.
-        assert excludes == [".dataengineer", ".dataengineer/**"]
+        assert excludes == [".datus", ".datus/**", ".dataengineer", ".dataengineer/**"]
 
     def test_re_includes_default_to_skills_only(self, project):
         _, re_includes = build_walk_patterns(root_path=project, current_node=None)
         # Without a current_node we cannot scope a memory subtree — only the
         # project-local skills directory gets re-included.
-        assert re_includes == [".dataengineer/skills/**"]
+        assert re_includes == [".datus/skills/**", ".dataengineer/skills/**"]
 
     def test_re_includes_add_node_memory(self, project):
         _, re_includes = build_walk_patterns(root_path=project, current_node="gen_sql")
         # Skills stays first (longest-prefix-wins isn't used here, but the
         # downstream walker iterates in list order for determinism).
-        assert re_includes == [".dataengineer/skills/**", ".dataengineer/memory/gen_sql/**"]
+        assert re_includes == [
+            ".datus/skills/**",
+            ".dataengineer/skills/**",
+            ".datus/memory/gen_sql/**",
+            ".dataengineer/memory/gen_sql/**",
+        ]
 
     def test_patterns_are_posix_for_wcmatch(self, project):
         """All generated patterns are POSIX slashes; wcmatch does not normalize

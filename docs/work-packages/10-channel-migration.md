@@ -1,5 +1,7 @@
 # WP-10: API And Feishu Migration Readiness
 
+> Historical migration design. Its Legacy fallback and rollout fields are not current API behavior; see `docs/frontend-next-work-plan.md` for the active runtime contract.
+
 ## Status
 
 - state: design_complete; cutover_blocked_by_benchmark

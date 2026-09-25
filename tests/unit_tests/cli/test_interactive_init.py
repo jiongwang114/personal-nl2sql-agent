@@ -97,10 +97,10 @@ class TestInit:
 
     def test_config_file_generation(self, monkeypatch):
         """N4-03: agent.yml + project-level .dataengineer/config.yml round-trip."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory() as tmpdir, monkeypatch.context() as isolated_cwd:
             # ``save_project_override`` writes relative to CWD, so pin it to
             # the tmpdir for the duration of the test.
-            monkeypatch.chdir(tmpdir)
+            isolated_cwd.chdir(tmpdir)
             init = InteractiveInit(user_home=tmpdir)
 
             conf_dir = Path(tmpdir) / ".datus" / "conf"
@@ -138,7 +138,7 @@ class TestInit:
             assert "models" not in saved_config["agent"], "Init wizard must not write agent.models"
             assert "test_ns" in saved_config["agent"]["services"]["datasources"]
 
-            project_cfg_path = Path(tmpdir) / ".datus" / "config.yml"
+            project_cfg_path = Path(tmpdir) / ".dataengineer" / "config.yml"
             assert project_cfg_path.exists(), "Project-level .dataengineer/config.yml should be created"
             with open(project_cfg_path, "r") as f:
                 project_cfg = yaml.safe_load(f)

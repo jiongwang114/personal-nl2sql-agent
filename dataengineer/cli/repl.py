@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -21,6 +22,7 @@ from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.lexers import PygmentsLexer
+from prompt_toolkit.output import DummyOutput
 from prompt_toolkit.styles import Style, merge_styles, style_from_pygments_cls
 from rich.console import Console
 from rich.panel import Panel
@@ -612,6 +614,7 @@ class DataEngineerCLI:
 
     def _init_prompt_session(self):
         # Setup prompt session with custom key bindings
+        output = None if sys.stdout.isatty() else DummyOutput()
         self.session = PromptSession(
             history=self.history,
             auto_suggest=AutoSuggestFromHistory(),
@@ -624,6 +627,7 @@ class DataEngineerCLI:
             erase_when_done=True,
             style=self._build_app_style(),
             complete_while_typing=True,
+            output=output,
         )
 
     # Create combined completer
@@ -1517,7 +1521,7 @@ class DataEngineerCLI:
         if use_art:
             body.add_row(Text(DATUS_BANNER_TEXT, style="bold"))
         else:
-            body.add_row(Text(f"DATUS v{__version__}", style="bold"))
+            body.add_row(Text(f"DATAENGINEER v{__version__}", style="bold"))
         body.add_row(Text(""))
         body.add_row(Text("Data engineering agent builds evolvable context for your data system", style="bold"))
         body.add_row(Text(""))

@@ -44,7 +44,7 @@ Set-Location ..
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\compare_pi_variants.py `
-  reports\legacy.jsonl reports\single.jsonl reports\multi.jsonl `
+  reports\single.jsonl reports\multi.jsonl `
   --output reports\pi-runtime-comparison.json
 ```
 

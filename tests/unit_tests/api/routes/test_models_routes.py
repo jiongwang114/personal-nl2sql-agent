@@ -139,15 +139,14 @@ class TestCacheMetadata:
 
         assert result.data.source == "cache"
         assert result.data.fetched_at == "2026-04-21T07:15:48Z"
-        assert len(result.data.models) == 1
-        model = result.data.models[0]
-        assert model.provider == "openai"
-        assert model.id == "gpt-4o"
-        assert model.model == "gpt-4o"
-        assert model.name == "GPT-4o"
-        assert model.context_length == 128000
-        assert model.max_tokens == 16384  # from model_specs fallback
-        assert (model.pricing.prompt, model.pricing.completion) == ("0.0000025", "0.00001")
+        assert [model.id for model in result.data.models] == ["gpt-4o", "gpt-4.1"]
+        cached_model = result.data.models[0]
+        assert cached_model.provider == "openai"
+        assert cached_model.model == "gpt-4o"
+        assert cached_model.name == "GPT-4o"
+        assert cached_model.context_length == 128000
+        assert cached_model.max_tokens == 16384  # from model_specs fallback
+        assert (cached_model.pricing.prompt, cached_model.pricing.completion) == ("0.0000025", "0.00001")
 
     @pytest.mark.asyncio
     async def test_cache_absent_uses_providers_yml_models(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -197,7 +196,7 @@ class TestCacheMetadata:
         assert result.data.models[0].max_tokens == 8192
 
     @pytest.mark.asyncio
-    async def test_unknown_slug_returns_null_context_and_pricing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_unknown_cached_slug_is_not_exposed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             models_routes,
             "load_cached_model_details",
@@ -208,12 +207,29 @@ class TestCacheMetadata:
         svc = _make_svc(catalog=_basic_catalog(), available={"openai"})
         result = await list_models(svc)
 
-        assert len(result.data.models) == 1
-        model = result.data.models[0]
-        assert model.id == "brand-new-slug"
-        assert model.context_length is None
-        assert model.max_tokens is None
-        assert model.pricing is None
+        assert {model.id for model in result.data.models} == {"gpt-4o", "gpt-4.1"}
+        assert all(model.id != "brand-new-slug" for model in result.data.models)
+        assert result.data.source == "catalog"
+
+    @pytest.mark.asyncio
+    async def test_cached_models_are_limited_to_configured_provider_slugs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        cache = {
+            "openai": [
+                {"id": "gpt-4.1", "name": "GPT-4.1", "context_length": 400000},
+                {"id": "brand-new-slug", "name": "Unconfigured model"},
+            ]
+        }
+        monkeypatch.setattr(models_routes, "load_cached_model_details", lambda: cache)
+        monkeypatch.setattr(models_routes, "load_cache_fetched_at", lambda: "2026-04-21T00:00:00Z")
+
+        svc = _make_svc(catalog=_basic_catalog(), available={"openai"})
+        result = await list_models(svc)
+
+        assert [model.id for model in result.data.models] == ["gpt-4o", "gpt-4.1"]
+        assert result.data.models[1].name == "GPT-4.1"
+        assert result.data.source == "cache"
 
     @pytest.mark.asyncio
     async def test_pricing_with_only_prompt_is_preserved(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -276,7 +292,7 @@ class TestCacheCatalogInterplay:
         by_provider: Dict[str, list] = {}
         for model in result.data.models:
             by_provider.setdefault(model.provider, []).append(model.id)
-        assert by_provider["openai"] == ["gpt-4o"]
+        assert by_provider["openai"] == ["gpt-4o", "gpt-4.1"]
         assert by_provider["claude"] == ["claude-sonnet-4-5"]
 
 
@@ -327,7 +343,7 @@ class TestDefensiveParsing:
         svc = _make_svc(catalog=_basic_catalog(), available={"openai"})
         result = await list_models(svc)
 
-        assert [m.id for m in result.data.models] == ["gpt-4o"]
+        assert [m.id for m in result.data.models] == ["gpt-4o", "gpt-4.1"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

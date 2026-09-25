@@ -87,8 +87,9 @@ def _redirect_stdio(log_file: Path) -> None:
 
 def _daemon_worker(args: argparse.Namespace, agent_args: argparse.Namespace, pid_file: Path, log_file: Path) -> None:
     """Worker function that runs in the daemon process."""
-    os.setsid()
-    os.umask(0)
+    if sys.platform != "win32":
+        os.setsid()
+        os.umask(0)
 
     configure_logging(args.debug, log_dir=str(log_file.parent), console_output=False)
     _redirect_stdio(log_file)
@@ -129,7 +130,7 @@ def _stop(pid_file: Path, timeout_seconds: float = 10.0) -> int:
         time.sleep(0.2)
 
     try:
-        os.kill(pid, signal.SIGKILL)
+        os.kill(pid, signal.SIGTERM if sys.platform == "win32" else signal.SIGKILL)
     except ProcessLookupError:
         pass
     _remove_pid_file(pid_file)

@@ -129,11 +129,13 @@ class TestColorMarkup:
         fn(console, *args, **kwargs)
         return buf.getvalue()
 
-    def test_error_uses_red(self):
+    def test_error_uses_red(self, monkeypatch):
+        monkeypatch.delenv("NO_COLOR", raising=False)
         raw = self._capture_with_color(print_error, "fail")
         assert "\x1b[" in raw  # ANSI escape present
 
-    def test_success_uses_green(self):
+    def test_success_uses_green(self, monkeypatch):
+        monkeypatch.delenv("NO_COLOR", raising=False)
         raw = self._capture_with_color(print_success, "ok")
         assert "\x1b[" in raw
 

@@ -121,7 +121,11 @@ class DatasourceCommands:
         """Write ``default_datasource`` to ``./.dataengineer/config.yml`` so the
         choice survives process restarts."""
         try:
-            from dataengineer.configuration.project_config import ProjectOverride, load_project_override, save_project_override
+            from dataengineer.configuration.project_config import (
+                ProjectOverride,
+                load_project_override,
+                save_project_override,
+            )
 
             project_root = str(getattr(self.cli.agent_config, "_project_root", None) or "")
             current = load_project_override(cwd=project_root) or ProjectOverride()

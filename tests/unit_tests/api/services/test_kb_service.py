@@ -1,5 +1,6 @@
 """Tests for datus.api.services.kb_service — knowledge base bootstrap."""
 
+import os
 from datetime import datetime
 
 import pytest
@@ -36,9 +37,9 @@ class TestKbServiceBuildArgs:
             database_name="test_db",
         )
         args = KbService._build_args(request, "/project")
-        assert args.success_story == "/project/data/stories"
-        assert args.sql_dir == "/project/data/sql"
-        assert args.ext_knowledge == "/project/data/knowledge"
+        assert args.success_story == os.path.join("/project", "data/stories")
+        assert args.sql_dir == os.path.join("/project", "data/sql")
+        assert args.ext_knowledge == os.path.join("/project", "data/knowledge")
         assert args.schema_linking_type == "table"
         assert args.catalog == "main"
         assert args.database_name == "test_db"
@@ -625,6 +626,41 @@ class TestKbServiceBootstrapDocStream:
 @pytest.mark.asyncio
 class TestKbServiceRunDocInitCancelBridge:
     """Tests for _run_doc_init cancel bridge behavior."""
+
+    async def test_run_doc_init_binds_and_restores_project_path_manager(self, tmp_path):
+        import asyncio
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from dataengineer.utils.path_manager import DataEngineerPathManager, get_path_manager
+
+        path_manager = DataEngineerPathManager(
+            datus_home=tmp_path / ".dataengineer",
+            project_name="kb_path_test",
+            project_root=tmp_path,
+        )
+        config = SimpleNamespace(path_manager=path_manager, document_configs={})
+        svc = KbService(agent_config=config)
+        loop = asyncio.get_running_loop()
+        queue = asyncio.Queue()
+        previous_project = get_path_manager().project_name
+        captured_projects = []
+
+        def _capture_project(**kwargs):
+            captured_projects.append(get_path_manager().project_name)
+            return object()
+
+        with patch("dataengineer.storage.document.doc_init.init_platform_docs", side_effect=_capture_project):
+            svc._run_doc_init(
+                BootstrapDocInput(platform="path_context", build_mode="check"),
+                queue,
+                loop,
+                asyncio.Event(),
+            )
+        await queue.get()
+
+        assert captured_projects == ["kb_path_test"]
+        assert get_path_manager().project_name == previous_project
 
     async def test_cancel_bridge_propagates_to_init_platform_docs(self, real_agent_config):
         """_run_doc_init bridges cancel_event.is_set() as cancel_check callable."""

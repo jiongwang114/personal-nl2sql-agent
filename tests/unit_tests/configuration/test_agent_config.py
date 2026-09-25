@@ -10,6 +10,7 @@ CI-level: zero external deps, zero network.
 """
 
 import argparse
+from pathlib import Path
 
 import pytest
 
@@ -420,7 +421,7 @@ class TestAgentConfigServiceSelectors:
 
         assert config["type"] == "metricflow"
         assert config["agent_home"] == str(tmp_path / "h")
-        assert config["semantic_models_path"].endswith("subject/semantic_models")
+        assert Path(config["semantic_models_path"]).parts[-2:] == ("subject", "semantic_models")
 
     def test_resolve_semantic_adapter_requires_explicit_choice_for_multiple_entries(self, tmp_path):
         cfg = self._make(
@@ -970,7 +971,7 @@ class TestProviderConfigurationDispatch:
         assert cfg._target_provider == "openai"
         assert cfg._target_model == "gpt-4.1"
 
-        project_cfg = tmp_path / ".datus" / "config.yml"
+        project_cfg = tmp_path / ".dataengineer" / "config.yml"
         import yaml
 
         payload = yaml.safe_load(project_cfg.read_text(encoding="utf-8"))
@@ -982,7 +983,7 @@ class TestProviderConfigurationDispatch:
         assert cfg.target == "legacy"
         assert cfg._target_provider is None
 
-        project_cfg = tmp_path / ".datus" / "config.yml"
+        project_cfg = tmp_path / ".dataengineer" / "config.yml"
         import yaml
 
         payload = yaml.safe_load(project_cfg.read_text(encoding="utf-8"))

@@ -53,7 +53,12 @@ from dataengineer.storage.document.chunker import SemanticChunker
 from dataengineer.storage.document.cleaner import DocumentCleaner
 
 # Initialization functions
-from dataengineer.storage.document.doc_init import InitResult, import_documents, infer_platform_from_source, init_platform_docs
+from dataengineer.storage.document.doc_init import (
+    InitResult,
+    import_documents,
+    infer_platform_from_source,
+    init_platform_docs,
+)
 
 # Fetchers
 from dataengineer.storage.document.fetcher import BaseFetcher, GitHubFetcher, LocalFetcher, RateLimiter, WebFetcher

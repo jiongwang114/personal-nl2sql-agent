@@ -1,6 +1,7 @@
 
 """Tests for LanceDB vector backend covering table, database, and backend operations."""
 
+import os
 import unittest.mock
 from unittest.mock import MagicMock
 
@@ -208,8 +209,8 @@ class TestLanceVectorDatabase:
         mock_embed.generate_embeddings.return_value = [[0.1] * 128]
 
         with (
-            unittest.mock.patch("datus.storage.vector.lance_backend._wrap_embedding") as mock_wrap,
-            unittest.mock.patch("datus.storage.vector.lance_backend.EmbeddingFunctionConfig") as mock_config_cls,
+            unittest.mock.patch("dataengineer.storage.vector.lance_backend._wrap_embedding") as mock_wrap,
+            unittest.mock.patch("dataengineer.storage.vector.lance_backend.EmbeddingFunctionConfig") as mock_config_cls,
         ):
             mock_lance_fn = MagicMock()
             mock_wrap.return_value = mock_lance_fn
@@ -316,10 +317,10 @@ class TestLanceVectorBackendConnect:
         """Each project gets ``{data_dir}/{project}/dataengineer_db``."""
         backend = LanceVectorBackend()
         backend.initialize({"data_dir": "/tmp/test"})
-        with unittest.mock.patch("datus.storage.vector.lance_backend.lancedb") as mock_lancedb:
+        with unittest.mock.patch("dataengineer.storage.vector.lance_backend.lancedb") as mock_lancedb:
             mock_lancedb.connect.return_value = MagicMock()
             backend.connect("proj_a")
-            mock_lancedb.connect.assert_called_once_with("/tmp/test/proj_a/dataengineer_db")
+            mock_lancedb.connect.assert_called_once_with(os.path.join("/tmp/test", "proj_a", "dataengineer_db"))
 
     def test_connect_empty_project_raises(self):
         """connect('') raises DataEngineerException instead of silently un-sharding."""
@@ -339,13 +340,13 @@ class TestLanceVectorBackendConnect:
         """A single LanceVectorBackend instance serves many projects via separate connect() calls."""
         backend = LanceVectorBackend()
         backend.initialize({"data_dir": "/tmp/test"})
-        with unittest.mock.patch("datus.storage.vector.lance_backend.lancedb") as mock_lancedb:
+        with unittest.mock.patch("dataengineer.storage.vector.lance_backend.lancedb") as mock_lancedb:
             mock_lancedb.connect.return_value = MagicMock()
             backend.connect("proj_a")
             backend.connect("proj_b")
             paths = [c.args[0] for c in mock_lancedb.connect.call_args_list]
-            assert "/tmp/test/proj_a/dataengineer_db" in paths
-            assert "/tmp/test/proj_b/dataengineer_db" in paths
+            assert os.path.join("/tmp/test", "proj_a", "dataengineer_db") in paths
+            assert os.path.join("/tmp/test", "proj_b", "dataengineer_db") in paths
 
 
 # ---------------------------------------------------------------------------

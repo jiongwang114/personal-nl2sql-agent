@@ -967,6 +967,29 @@ class TestStartChatModelOverride:
         assert captured["agent_config"]._target_model is None
 
     @pytest.mark.asyncio
+    async def test_custom_provider_model_override(self, real_agent_config, monkeypatch):
+        from dataengineer.api.models.cli_models import StreamChatInput
+
+        captured = {}
+
+        async def fake_run_loop(self, task, agent_config, request, **kwargs):
+            captured["agent_config"] = agent_config
+
+        real_agent_config.set_provider_catalog(
+            {"providers": {"custom": {"type": "openai", "models": ["gpt-6-luna"]}}}
+        )
+        monkeypatch.setattr(ChatTaskManager, "_run_loop", fake_run_loop)
+        manager = ChatTaskManager()
+        task = await manager.start_chat(
+            real_agent_config,
+            StreamChatInput(message="hi", model="custom/gpt-6-luna"),
+        )
+        await task.asyncio_task
+
+        assert captured["agent_config"]._target_provider == "custom"
+        assert captured["agent_config"]._target_model == "gpt-6-luna"
+
+    @pytest.mark.asyncio
     async def test_model_with_slash_in_id(self, real_agent_config, monkeypatch):
         from dataengineer.api.models.cli_models import StreamChatInput
 

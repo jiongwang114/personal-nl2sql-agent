@@ -3,7 +3,12 @@
 
 import pytest
 
-from dataengineer.storage.embedding_models import DEFAULT_MODEL_CONFIG, EMBEDDING_MODELS, EmbeddingModel, get_embedding_model
+from dataengineer.storage.embedding_models import (
+    DEFAULT_MODEL_CONFIG,
+    EMBEDDING_MODELS,
+    EmbeddingModel,
+    get_embedding_model,
+)
 from dataengineer.utils.constants import EmbeddingProvider
 from dataengineer.utils.exceptions import DataEngineerException
 
